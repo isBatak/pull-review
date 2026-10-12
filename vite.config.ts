@@ -3,11 +3,15 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { contentSecurityPolicy } from './build/content-security-policy'
+import pkg from './package.json' with { type: 'json' }
 
 const DEV_API_PORT = 5174
 
 export default defineConfig({
   root: 'src/web',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [pandacss({ cwd: fileURLToPath(new URL('.', import.meta.url)) }), react(), contentSecurityPolicy()],
   resolve: {
     alias: {

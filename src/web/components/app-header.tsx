@@ -85,6 +85,12 @@ export function AppHeader({ project, projectInfo, onOpenSettings }: AppHeaderPro
             </button>
           </>
         )}
+        <span
+          title={`Pull Review ${__APP_VERSION__}`}
+          className={css({ flexShrink: 0, px: '1.5', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'sm', fontSize: '2xs', lineHeight: '1.6', color: 'fg.subtle', fontVariantNumeric: 'tabular-nums' })}
+        >
+          v{__APP_VERSION__}
+        </span>
       </div>
 
       <form
