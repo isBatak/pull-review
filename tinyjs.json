@@ -1,0 +1,29 @@
+{
+  "name": "pull-review",
+  "title": "Pull Review",
+  "size": "1440x900",
+  "id": "dev.pull-review.app",
+  "version": "0.1.0",
+  "icon": "build/icon.png",
+  "backend": "out/app-backend/main.js",
+  "frontend": {
+    "build": "pnpm run build:app",
+    "dist": "out/app-web",
+    "dev": "pnpm exec vite --port 5173 --strictPort",
+    "devUrl": "http://127.0.0.1:5173"
+  },
+  "api": {
+    "origins": {
+      "file://*": [
+        "request",
+        "shell.open",
+        "clip.write"
+      ],
+      "http://127.0.0.1:5173": [
+        "request",
+        "shell.open",
+        "clip.write"
+      ]
+    }
+  }
+}

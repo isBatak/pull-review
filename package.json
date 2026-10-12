@@ -1,0 +1,67 @@
+{
+  "name": "pull-review",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Review GitLab merge requests locally with grouped, beautiful diffs.",
+  "bin": {
+    "pull-review": "./bin/pull-review.mjs"
+  },
+  "files": [
+    "bin",
+    "out"
+  ],
+  "scripts": {
+    "prepare": "panda codegen",
+    "dev": "concurrently -k -n server,web \"tsx watch src/server/dev.ts\" \"vite\"",
+    "build": "panda codegen && vite build && tsdown",
+    "start": "node bin/pull-review.mjs",
+    "desktop:dev": "node scripts/check-tinyjs.mjs && tinyjs dev",
+    "desktop:build": "node scripts/check-tinyjs.mjs && tinyjs build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "desktop:install": "node scripts/check-tinyjs.mjs && tinyjs build && rm -rf \"/Applications/Pull Review.app\" && cp -R \"dist/Pull Review.app\" /Applications/",
+    "build:app-web": "panda codegen && vite build --base ./ --outDir ../../out/app-web --emptyOutDir",
+    "build:app": "pnpm run build:app-web && tsdown"
+  },
+  "devDependencies": {
+    "@ark-ui/react": "^5.39.3",
+    "@hono/node-server": "^2.1.3",
+    "@iconify-json/vscode-icons": "^1.2.85",
+    "@iconify/utils": "^3.1.7",
+    "@pandacss/dev": "^2.1.2",
+    "@pandacss/preset-base": "^2.1.2",
+    "@pandacss/preset-panda": "^2.1.2",
+    "@pandacss/vite": "^2.1.2",
+    "@pierre/diffs": "^1.5.2",
+    "@pierre/truncate": "^0.0.2",
+    "@tanstack/react-query": "^5.104.1",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@types/node": "^26.6.4",
+    "@types/picomatch": "^4.0.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "cac": "^7.0.0",
+    "concurrently": "^10.0.5",
+    "d3-hierarchy": "^3.1.2",
+    "hono": "^4.13.13",
+    "lucide-react": "^1.52.0",
+    "open": "^11.0.4",
+    "picomatch": "^4.0.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "react-router": "^8.4.0",
+    "remark-gfm": "^4.0.1",
+    "tsdown": "^0.23.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3",
+    "vscode-icons-js": "^11.6.1"
+  },
+  "pinned": {
+    "tinyjs": "0.50.1"
+  }
+}
