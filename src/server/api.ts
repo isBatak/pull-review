@@ -3,8 +3,14 @@ import type { DiffRefs, MrListState, MrRef, NewDiffComment, ProjectRef } from '.
 import type { ChatSendInput } from '../shared/chat'
 import type { ChatService } from './chat/service'
 import type { GitlabClient } from './gitlab'
+import type { LocalHost } from './local/host'
 import { Hono } from 'hono'
 import { ChatError } from './chat/service'
+import { EditorError, editorStatus, openInEditor } from './local/editor'
+import { createGitTools, expandHome, GitError } from './local/git'
+import { createRepoLinks } from './local/repo-link'
+import { grepSymbol } from './local/symbols'
+import { isSearchableSymbol } from '../shared/symbols'
 import { createGitlabClient, GitlabError } from './gitlab'
 import { createGitlabProjectClient } from './gitlab-project'
 import { fileIconName, folderIconName, renderIcon } from './icons'
@@ -19,6 +25,7 @@ export interface ApiOptions {
   localRepo?: () => Promise<LocalRepo | null>
   resolveToken: TokenResolver
   chat?: ChatService
+  host?: LocalHost
 }
 
 export interface LocalRepo {
@@ -72,6 +79,8 @@ function readIds(value: string | undefined): number[] {
 function errorResponse(c: Context, error: unknown) {
   if (error instanceof GitlabError || error instanceof ChatError)
     return c.json({ error: error.message }, error.status as 400)
+  if (error instanceof GitError || error instanceof EditorError)
+    return c.json({ error: error.message }, 400)
   const message = error instanceof Error ? error.message : String(error)
   return c.json({ error: message }, 500)
 }
@@ -93,6 +102,52 @@ export function createApi(options: ApiOptions) {
   }))
 
   api.get('/chat/status', async c => c.json({ available: Boolean(await options.chat?.available()) }))
+
+  const host = options.host
+  const gitTools = host ? createGitTools(host) : null
+  const repoLinks = host && gitTools ? createRepoLinks(host, gitTools) : null
+
+  api.post('/local/inspect', async (c) => {
+    if (!repoLinks)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const input = await c.req.json<{ path: string, project: string }>()
+    if (!input.path || !input.project)
+      return c.json({ error: 'Expected path and project' }, 400)
+    return c.json(await repoLinks.inspect(input.path, { project: input.project }))
+  })
+
+  api.post('/local/worktree', async (c) => {
+    if (!repoLinks)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const input = await c.req.json<{ sourcePath: string, targetPath: string, project: string }>()
+    if (!input.sourcePath || !input.targetPath || !input.project)
+      return c.json({ error: 'Expected sourcePath, targetPath and project' }, 400)
+    return c.json(await repoLinks.createWorktree(input.sourcePath, input.targetPath, { project: input.project }))
+  })
+
+  api.get('/editor', async (c) => {
+    if (!host)
+      return c.json({ detected: null, installed: [] })
+    return c.json(await editorStatus(host))
+  })
+
+  api.post('/editor/open', async (c) => {
+    if (!host)
+      return c.json({ error: 'Opening files in an editor is not available here.' }, 404)
+    const input = await c.req.json<{ repoPath: string, path: string, line: number, column: number, editor: string }>()
+    const segments = String(input.path ?? '').split('/')
+    if (!input.repoPath || !input.path || segments.includes('..') || input.path.startsWith('/'))
+      return c.json({ error: 'Expected a repository folder and a file path inside it.' }, 400)
+    const workspace = expandHome(input.repoPath, host.homeDir)
+    const editor = await openInEditor(host, {
+      workspace,
+      file: `${workspace}/${input.path}`,
+      line: Math.max(1, Number(input.line) || 1),
+      column: Math.max(1, Number(input.column) || 1),
+      editor: String(input.editor || 'auto'),
+    })
+    return c.json({ editor })
+  })
 
   api.use('/mr/*', async (c, next) => {
     const ref = readRef(c)
@@ -254,6 +309,27 @@ export function createApi(options: ApiOptions) {
   function chatRef(c: Context) {
     return readRef(c)!
   }
+
+  api.post('/mr/local/checkout', async (c) => {
+    if (!repoLinks)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath } = await c.req.json<{ repoPath: string }>()
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    const mergeRequest = await c.var.client.mergeRequest()
+    return c.json(await repoLinks.checkout(repoPath, readRef(c)!, mergeRequest.sourceBranch, mergeRequest.diffRefs.headSha))
+  })
+
+  api.get('/mr/symbols', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Searching a local repository is not available here.' }, 404)
+    const name = c.req.query('name') ?? ''
+    const sha = c.req.query('sha') ?? ''
+    const repoPath = c.req.query('repoPath') ?? ''
+    if (!isSearchableSymbol(name) || !/^[0-9a-f]{7,64}$/i.test(sha) || !repoPath)
+      return c.json({ error: 'Expected name, sha and repoPath query parameters' }, 400)
+    return c.json(await grepSymbol(gitTools, { ref: readRef(c)!, repoPath, sha, name }))
+  })
 
   api.get('/mr/chat/state', async (c) => {
     const since = Number(c.req.query('since')) || 0

@@ -16,7 +16,7 @@ export interface StreamOptions {
   onLine: (line: string) => void
 }
 
-export interface ChatHost {
+export interface LocalHost {
   pid: number
   homeDir: string
   cacheDir: string
@@ -24,6 +24,7 @@ export interface ChatHost {
   isExecutable: (path: string) => Promise<boolean>
   run: (args: string[], options: { cwd: string, env: Record<string, string>, timeoutMs: number }) => Promise<RunResult>
   stream: (args: string[], options: StreamOptions) => StreamedProcess
+  launch: (args: string[], env: Record<string, string>) => void
   writeFile: (path: string, text: string) => Promise<void>
   makeDir: (path: string) => Promise<void>
   remove: (path: string) => Promise<void>
@@ -34,7 +35,7 @@ export interface ChatHost {
 
 const FALLBACK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
 
-export async function findExecutable(host: ChatHost, name: string, extraDirs: string[] = []): Promise<string | null> {
+export async function findExecutable(host: LocalHost, name: string, extraDirs: string[] = []): Promise<string | null> {
   const env = await host.env()
   const dirs = [...(env.PATH ?? '').split(':'), ...extraDirs, ...FALLBACK_DIRS].filter(Boolean)
   for (const dir of new Set(dirs)) {

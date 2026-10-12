@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { expandHome, findMatchingRemote, slugFor } from './workspace'
+import { expandHome, findMatchingRemote } from '../local/git'
+import { slugFor } from './workspace'
 
 describe('findMatchingRemote', () => {
   const output = [
-    'fork\tgit@gitlab.com:me/project.git (fetch)',
-    'origin\tgit@gitlab.example.com:Group/Project.git (fetch)',
-    'origin\tgit@gitlab.example.com:Group/Project.git (push)',
+    'remote.fork.url git@gitlab.com:me/project.git',
+    'remote.origin.url git@gitlab.example.com:Group/Project.git',
   ].join('\n')
 
   it('finds the remote for the project, ignoring case', () => {

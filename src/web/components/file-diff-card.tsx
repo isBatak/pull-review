@@ -10,8 +10,11 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { describeRange } from '../../shared/chat'
 import { codeForRange, createLineMap } from '../../shared/line-map'
+import { isSearchableSymbol } from '../../shared/symbols'
 import { api } from '../lib/api'
 import { useChatControls } from '../lib/chat'
+import { GITHUB_THEMES } from '../lib/code-tokens'
+import { useOpenSymbol } from '../lib/symbols'
 import { directoryName, domIdForFile, fileName } from '../lib/format'
 import { CommentComposer } from './comment-composer'
 import { ImageDiff, isImagePath } from './image-diff'
@@ -43,7 +46,6 @@ export interface FileDiffCardProps {
   onReviewedChange: (file: DiffFile, reviewed: boolean) => void
 }
 
-const GITHUB_THEMES = { light: 'github-light-default', dark: 'github-dark-default' }
 
 const STATUS_STYLES: Record<DiffFile['status'], { label: string, tone: string }> = {
   added: { label: 'Added', tone: 'success.fg' },
@@ -65,6 +67,20 @@ function buildGitDiff(file: DiffFile) {
   lines.push(`+++ ${file.status === 'removed' ? '/dev/null' : `b/${file.path}`}`)
   lines.push(file.diff.replace(/\n$/, ''))
   return `${lines.join('\n')}\n`
+}
+
+function markSymbolToken(token: { tokenText: string, tokenElement: HTMLElement }) {
+  if (!isSearchableSymbol(token.tokenText.trim()))
+    return
+  token.tokenElement.style.cursor = 'pointer'
+  token.tokenElement.style.textDecoration = 'underline'
+  token.tokenElement.style.textUnderlineOffset = '3px'
+}
+
+function unmarkSymbolToken(token: { tokenElement: HTMLElement }) {
+  token.tokenElement.style.cursor = ''
+  token.tokenElement.style.textDecoration = ''
+  token.tokenElement.style.textUnderlineOffset = ''
 }
 
 export function DiffStat({ additions, deletions }: { additions: number, deletions: number }) {
@@ -94,6 +110,7 @@ function FileDiffCardImpl({
   const [loadingLarge, setLoadingLarge] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const chat = useChatControls()
+  const openSymbol = useOpenSymbol()
   const [selection, setSelection] = useState<SelectedLineRange | null>(null)
 
   const lineMap = useMemo(() => createLineMap(file.diff), [file.diff])
@@ -172,8 +189,17 @@ function FileDiffCardImpl({
     enableLineSelection: true,
     onGutterUtilityClick: openDraft,
     onLineSelected: chat ? setSelection : undefined,
+    onTokenEnter: openSymbol ? markSymbolToken : undefined,
+    onTokenLeave: openSymbol ? unmarkSymbolToken : undefined,
+    onTokenClick: openSymbol
+      ? (token) => {
+          const name = token.tokenText.trim()
+          if (isSearchableSymbol(name))
+            openSymbol({ name, path: file.path, anchor: token.tokenElement.getBoundingClientRect() })
+        }
+      : undefined,
     loadDiffFiles: file.isBinary ? undefined : loadContents,
-  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, chat])
+  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, file.path, chat, openSymbol])
 
   const renderAnnotation = useCallback((annotation: DiffLineAnnotation<AnnotationData>) => {
     const { discussions: threads, hasDraft } = annotation.metadata

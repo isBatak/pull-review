@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.5 (2026-10-12)
+
+- Click a function, variable or type name in a diff to see its definition and references in a panel styled like GitHub's: the kind and name at the top, the definition, references grouped by file with counts, arrows that step through the references in this review, and a link to search for the name in GitLab. Code lines are syntax colored with the same GitHub theme as the diff. Names are underlined when you point at them.
+- With a local repository for the project, the whole repository is searched at the merge request's commit. Without one, only the changed lines are searched.
+- Click a result to jump to it in the review when the line is in the diff, or open it in GitLab. With a local repository you can also open it in your code editor.
+- Settings, General has one local repository, for the GitLab project chosen there. Repositories linked while reviewing other projects are listed under "Other projects".
+- Adding a local repository now asks how to use it. "Create a worktree for Pull Review" makes a new git worktree next to your clone (for example `tradelocker-review`), so your own folder is never touched. "Use this folder" is for a worktree you already made for reviews. A main checkout can't be used directly.
+- When you open a merge request, Pull Review switches the project's worktree to the merge request's branch and its latest commit, so opening files in your editor shows the right code. It doesn't switch when the worktree has uncommitted changes. If your local branch has commits that aren't in the merge request, it leaves the branch alone and checks out the merge request's commit without a branch. A label next to the branches in the review header shows the result.
+- Opening a file in your editor now opens the local repository's worktree as a folder. If a window already has it open, that window is used. Otherwise a new window opens, instead of the file landing in whatever window was last active.
+- New "Code editor" setting in Settings, General. Pull Review finds the editor that is running, or you can pick one: VS Code, Cursor, Windsurf, Zed, Sublime Text, JetBrains editors and others.
+
 ## 0.2.4 (2026-10-12)
 
 - Local repositories moved from the AI tab to the General tab in Settings, because other features that need the full repository can use them too. The AI tab now explains how they are used for the Claude chat.

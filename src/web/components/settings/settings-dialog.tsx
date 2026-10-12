@@ -17,6 +17,7 @@ import { AiTab } from './ai-tab'
 import { BackupTab } from './backup-tab'
 import { BundleTab } from './bundle-tab'
 import { CategoriesTab } from './categories-tab'
+import { EditorSetting } from './editor-setting'
 import { LocalRepos } from './local-repos'
 
 const input = css({
@@ -116,6 +117,7 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
         </p>
       </div>
       <LocalRepos settings={settings} onChange={onChange} />
+      <EditorSetting settings={settings} onChange={onChange} />
       <div>
         <label className={fieldLabel} htmlFor="settings-jira">Jira site</label>
         <input

@@ -8,7 +8,7 @@ import { cac } from 'cac'
 import open from 'open'
 import { mrAppPath, parseMrRef } from '../shared/mr-ref'
 import { createApp } from './app'
-import { createNodeChatHost } from './chat/node-host'
+import { createNodeLocalHost } from './local/node-host'
 import { createChatService } from './chat/service'
 import { detectMrFromGit } from './detect'
 import { resolveToken, tokenHelp } from './token'
@@ -76,9 +76,10 @@ cli
     }
 
     const initialPath = ref ? mrAppPath(ref) : '/'
-    const chat = createChatService(createNodeChatHost())
+    const host = createNodeLocalHost()
+    const chat = createChatService(host)
     stopChatOnExit(chat)
-    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath, cwd: process.cwd(), chat }, Number(flags.port))
+    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath, cwd: process.cwd(), chat, host }, Number(flags.port))
     const url = `http://127.0.0.1:${port}${initialPath}`
     console.log(`\n  pull-review is running at ${url}\n  Press Ctrl+C to stop.\n`)
     if (flags.open)

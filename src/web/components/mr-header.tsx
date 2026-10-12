@@ -32,6 +32,7 @@ interface MrHeaderProps {
   onRefresh: () => void
   refreshing: boolean
   onOpenSettings: () => void
+  localStatus?: React.ReactNode
   chatOpen: boolean | null
   onChatOpenChange: (open: boolean) => void
 }
@@ -81,7 +82,7 @@ function ApproveButton() {
   )
 }
 
-export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, theme, onThemeChange, onRefresh, refreshing, onOpenSettings, chatOpen, onChatOpenChange }: MrHeaderProps) {
+export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, theme, onThemeChange, onRefresh, refreshing, onOpenSettings, chatOpen, onChatOpenChange, localStatus }: MrHeaderProps) {
   const { mergeRequest } = useReview()
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
@@ -136,6 +137,7 @@ export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, th
             {timeAgo(mergeRequest.updatedAt)}
           </span>
           <BranchPills source={mergeRequest.sourceBranch} target={mergeRequest.targetBranch} />
+          {localStatus}
           <span>
             {files.length}
             {' files'}

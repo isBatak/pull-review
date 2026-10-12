@@ -1,11 +1,12 @@
 import type { ChatMessage, ChatSendInput, ChatState, ChatWorkspace } from '../../shared/chat'
 import type { DiffFile, MergeRequest, MrRef } from '../../shared/types'
-import type { ChatHost, StreamedProcess } from './host'
+import type { LocalHost, StreamedProcess } from '../local/host'
 import { buildMrSummary, buildPatch, buildPrompt, buildSystemPrompt, EMPTY_CHAT_STATE } from '../../shared/chat'
 import { mrKey } from '../../shared/mr-ref'
 import { applyStreamLine, explainExit } from './claude-events'
-import { findExecutable } from './host'
-import { createWorkspaces, expandHome } from './workspace'
+import { findExecutable } from '../local/host'
+import { expandHome } from '../local/git'
+import { createWorkspaces } from './workspace'
 
 const IDLE_LIMIT_MS = 30 * 60_000
 const IDLE_CHECK_MS = 60_000
@@ -57,7 +58,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-export function createChatService(host: ChatHost): ChatService {
+export function createChatService(host: LocalHost): ChatService {
   const sessions = new Map<string, Session>()
   const workspaces = createWorkspaces(host)
   const claudePath = findExecutable(host, 'claude', [`${host.homeDir}/.local/bin`, `${host.homeDir}/.claude/local`])

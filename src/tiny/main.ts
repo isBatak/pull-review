@@ -2,7 +2,7 @@ import { parseEnvOutput } from '../shared/env-output'
 import { createApi } from '../server/api'
 import { createChatService } from '../server/chat/service'
 import { createTokenResolver } from '../server/token-core'
-import { createTinyChatHost } from './chat-host'
+import { createTinyLocalHost } from './local-host'
 
 const FALLBACK_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
 const SHELL_TIMEOUT_MS = 5000
@@ -69,7 +69,7 @@ const resolveToken = createTokenResolver({
   },
 })
 
-const chatEnv = loginShellEnv.then((env) => {
+const localEnv = loginShellEnv.then((env) => {
   const merged: Record<string, string> = {}
   for (const [key, value] of Object.entries(tjs.env)) {
     if (value !== undefined)
@@ -78,9 +78,10 @@ const chatEnv = loginShellEnv.then((env) => {
   return { ...merged, ...env }
 })
 
-const chat = createChatService(createTinyChatHost(() => chatEnv))
+const host = createTinyLocalHost(() => localEnv)
+const chat = createChatService(host)
 
-const server = createApi({ resolveToken, chat })
+const server = createApi({ resolveToken, chat, host })
 
 const TEXT_TYPE = /^(?:text\/|application\/(?:json|javascript|xml)|image\/svg\+xml)/
 

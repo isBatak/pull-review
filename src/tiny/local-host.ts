@@ -1,4 +1,4 @@
-import type { ChatHost, RunResult } from '../server/chat/host'
+import type { LocalHost, RunResult } from '../server/local/host'
 
 const STDERR_LIMIT = 8000
 const RUN_IN_DIR = 'cd -- "$0" || exit 1; exec "$@"'
@@ -27,7 +27,7 @@ async function exists(path: string) {
   }
 }
 
-export function createTinyChatHost(loadEnv: () => Promise<Record<string, string>>): ChatHost {
+export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string>>): LocalHost {
   const encoder = new TextEncoder()
 
   async function run(args: string[], { cwd, env, timeoutMs }: { cwd: string, env: Record<string, string>, timeoutMs: number }): Promise<RunResult> {
@@ -90,6 +90,11 @@ export function createTinyChatHost(loadEnv: () => Promise<Record<string, string>
         },
         exited,
       }
+    },
+
+    launch(args, env) {
+      const process = tjs.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore', env })
+      void process.wait().catch(() => null)
     },
 
     writeFile: (path, text) => tjs.writeFile(path, encoder.encode(text)),

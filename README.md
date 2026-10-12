@@ -59,8 +59,24 @@ The review page has a Claude chat panel. Open it with the sparkles button in the
 - The chat runs your installed `claude` command, so it uses your Claude Code login and subscription. It removes `ANTHROPIC_API_KEY` from the environment, so you are never billed through the API by accident.
 - Claude gets the merge request description and full diff. It can only read and search files. It can't run commands or change anything.
 - Select lines in a diff (click a line number, then Shift-click another). While the chat is open they are added to your question right away. To add them only with the **Ask Claude** button instead, change "Selected lines in the Claude chat" in Settings, AI. To include several parts, click the sparkles button in the file header to keep the current lines, then select the next ones.
-- To let Claude read whole files, click **Add folder** in the chat, or use Settings, General, Local repositories, and enter your local clone of the project. The CLI fills this in when you start it inside a matching clone. The app then makes a git worktree at the merge request's head commit in `~/Library/Caches/pull-review`, fetching `refs/merge-requests/<iid>/head` if needed. Your own checkout and branch stay untouched.
+- To let Claude read whole files, add a local repository: click **Add folder** in the chat, or use Settings, General, Local repositories. The CLI fills this in when you start it inside a matching clone. The app then makes a git worktree at the merge request's head commit in `~/Library/Caches/pull-review`, fetching `refs/merge-requests/<iid>/head` if needed. Your own checkout and branch stay untouched.
 - Worktrees are removed when a merge request's chat is unused for 30 minutes, when the CLI quits, and on the next start after a crash or after the desktop app quits.
+
+## Local repositories
+
+Settings, General, Local repository links the GitLab project to a git worktree on your computer. If you review merge requests from other projects, you can link those from the Claude chat panel, and they are listed under "Other projects".
+
+- When you add a folder, Pull Review offers to create a new worktree from it (`<repo>-review` next to your clone by default), or to use the folder as it is if it is already a worktree. Your main checkout is never used directly, so its branch is never switched.
+- When you open a merge request, the worktree is switched to the merge request's source branch at its latest commit: a new local branch is created (tracking the remote branch when it matches), or an existing one is fast-forwarded. Nothing is switched while the worktree has uncommitted changes. If the local branch has commits that are not in the merge request, it is left alone and the commit is checked out without a branch.
+- The label next to the branches in the review header shows the result. Click it to try again.
+
+## Definitions and references
+
+Click a name in a diff to see where it is defined and used.
+
+- With a local repository for the project (Settings, General, Local repository), Pull Review runs `git grep` on the merge request's commit, so the whole repository is searched without a checkout. Without one, only the changed lines are searched.
+- Results are search-based, like GitHub's code navigation for most languages: a line counts as a definition when it looks like `function name`, `const name =`, `class name` and similar. Different symbols with the same name are not told apart.
+- A result opens in the review when its line is in the diff, otherwise in GitLab. With a local repository it can also open in your editor. The editor is found the same way [launch-ide](https://github.com/zh-lx/launch-ide) does it (the running editor process first), or you pick one in Settings, General. The editor opens the worktree folder in its own window (reusing a window that already has it open) and jumps to the line. Pull Review uses the command line bundled in the editor app, so `code` and similar commands don't need to be on your `PATH`.
 
 ## Authentication
 

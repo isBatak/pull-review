@@ -18,6 +18,8 @@ import type {
 } from '../../shared/types'
 
 import type { ChatSendInput, ChatState } from '../../shared/chat'
+import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
+import type { SymbolHit } from '../../shared/symbols'
 import { transport } from './platform'
 
 export class ApiError extends Error {
@@ -91,6 +93,15 @@ export const api = {
   projectCounts: (ref: ProjectRef, authorIds?: number[]) => call<MrCounts>(ref, '/project/counts', { query: { authorIds: authorIds?.join(',') } }),
   config: () => call<AppConfig>(null, '/config'),
   chatStatus: () => call<{ available: boolean }>(null, '/chat/status'),
+  inspectLocalFolder: (input: { path: string, project: string }) => call<LocalFolderInfo>(null, '/local/inspect', { method: 'POST', body: input }),
+  createLocalWorktree: (input: { sourcePath: string, targetPath: string, project: string }) =>
+    call<{ path: string }>(null, '/local/worktree', { method: 'POST', body: input }),
+  checkoutLocal: (ref: MrRef, repoPath: string) => call<LocalCheckout>(ref, '/mr/local/checkout', { method: 'POST', body: { repoPath } }),
+  editorStatus: () => call<{ detected: string | null, installed: string[] }>(null, '/editor'),
+  openInEditor: (input: { repoPath: string, path: string, line: number, column: number, editor: string }) =>
+    call<{ editor: string }>(null, '/editor/open', { method: 'POST', body: input }),
+  symbols: (ref: MrRef, input: { name: string, sha: string, repoPath: string }) =>
+    call<{ hits: SymbolHit[], truncated: boolean }>(ref, '/mr/symbols', { query: input }),
   chatState: (ref: MrRef, since: number, wait: number) => call<ChatState>(ref, '/mr/chat/state', { query: { since: String(since), wait: String(wait) } }),
   chatPrepare: (ref: MrRef, repoPath: string | null) => call<ChatState>(ref, '/mr/chat/prepare', { method: 'POST', body: { repoPath } }),
   chatSend: (ref: MrRef, input: ChatSendInput) => call<ChatState>(ref, '/mr/chat/messages', { method: 'POST', body: input }),

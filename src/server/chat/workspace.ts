@@ -1,13 +1,8 @@
 import type { MrRef } from '../../shared/types'
-import type { ChatHost } from './host'
-import { parseGitRemote } from '../../shared/git-remote'
-import { findExecutable, lastLines } from './host'
+import type { LocalHost } from '../local/host'
+import { createGitTools } from '../local/git'
 
-const GIT_TIMEOUT_MS = 30_000
-const FETCH_TIMEOUT_MS = 5 * 60_000
 const CHECKOUT_TIMEOUT_MS = 10 * 60_000
-
-export class WorkspaceError extends Error {}
 
 export interface Workspaces {
   rootFor: (pid: number) => string
@@ -23,69 +18,8 @@ export function slugFor(ref: MrRef) {
   return `${ref.host}-${ref.project}-${ref.iid}`.replace(/[^\w.-]+/g, '-')
 }
 
-export function expandHome(path: string, homeDir: string) {
-  const trimmed = path.trim().replace(/\/+$/, '')
-  if (trimmed === '~')
-    return homeDir
-  return trimmed.startsWith('~/') ? `${homeDir}${trimmed.slice(1)}` : trimmed
-}
-
-export function findMatchingRemote(remoteOutput: string, project: string): string | null {
-  for (const line of remoteOutput.split('\n')) {
-    const [name, url] = line.trim().split(/\s+/)
-    if (!name || !url)
-      continue
-    const remote = parseGitRemote(url)
-    if (remote && remote.project.toLowerCase() === project.toLowerCase())
-      return name
-  }
-  return null
-}
-
-export function createWorkspaces(host: ChatHost): Workspaces {
-  const gitPath = findExecutable(host, 'git')
-
-  async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS) {
-    const binary = await gitPath
-    if (!binary)
-      throw new WorkspaceError('Git is not installed.')
-    const env = { ...await host.env(), GIT_TERMINAL_PROMPT: '0' }
-    return host.run([binary, ...args], { cwd, env, timeoutMs })
-  }
-
-  async function gitOk(args: string[], cwd: string, timeoutMs?: number) {
-    const result = await git(args, cwd, timeoutMs)
-    if (result.code !== 0)
-      throw new WorkspaceError(lastLines(result.stderr) || `git ${args[0]} failed with code ${result.code}.`)
-    return result.stdout.trim()
-  }
-
-  async function hasCommit(repoPath: string, sha: string) {
-    return (await git(['cat-file', '-e', `${sha}^{commit}`], repoPath)).code === 0
-  }
-
-  async function ensureCommit(repoPath: string, remote: string, ref: MrRef, sha: string) {
-    if (await hasCommit(repoPath, sha))
-      return
-    await git(['fetch', '--no-tags', '--quiet', remote, `refs/merge-requests/${ref.iid}/head`], repoPath, FETCH_TIMEOUT_MS)
-    if (await hasCommit(repoPath, sha))
-      return
-    await gitOk(['fetch', '--no-tags', '--quiet', remote, sha], repoPath, FETCH_TIMEOUT_MS)
-  }
-
-  async function checkRepository(repoPath: string, ref: MrRef) {
-    if (!repoPath.startsWith('/'))
-      throw new WorkspaceError('Use the full path of the folder, for example ~/code/project.')
-    if (!await host.exists(repoPath))
-      throw new WorkspaceError(`The folder ${repoPath} does not exist.`)
-    const remotes = await git(['remote', '-v'], repoPath)
-    if (remotes.code !== 0)
-      throw new WorkspaceError(`${repoPath} is not a git repository.`)
-    const remote = findMatchingRemote(remotes.stdout, ref.project)
-    if (!remote)
-      throw new WorkspaceError(`${repoPath} has no git remote for ${ref.project}.`)
-    return remote
-  }
+export function createWorkspaces(host: LocalHost): Workspaces {
+  const { git, gitOk, openRepository, ensureCommit } = createGitTools(host)
 
   const root = (pid: number) => `${host.cacheDir}/${pid}`
 
@@ -110,10 +44,9 @@ export function createWorkspaces(host: ChatHost): Workspaces {
     worktreeDir: ref => `${root(host.pid)}/worktrees/${slugFor(ref)}`,
 
     async prepare(ref, rawRepoPath, headSha) {
-      const repoPath = expandHome(rawRepoPath, host.homeDir)
-      const remote = await checkRepository(repoPath, ref)
+      const repo = await openRepository(rawRepoPath, ref)
       const dir = `${root(host.pid)}/worktrees/${slugFor(ref)}`
-      await ensureCommit(repoPath, remote, ref, headSha)
+      await ensureCommit(repo, ref, headSha)
       if (await host.exists(dir)) {
         const current = await git(['rev-parse', 'HEAD'], dir)
         if (current.code === 0 && current.stdout.trim() === headSha)
@@ -125,7 +58,7 @@ export function createWorkspaces(host: ChatHost): Workspaces {
         await removeWorktree(dir)
       }
       await host.makeDir(`${root(host.pid)}/worktrees`)
-      await gitOk(['worktree', 'add', '--quiet', '--detach', '--force', dir, headSha], repoPath, CHECKOUT_TIMEOUT_MS)
+      await gitOk(['worktree', 'add', '--quiet', '--detach', '--force', dir, headSha], repo.path, CHECKOUT_TIMEOUT_MS)
       return dir
     },
 

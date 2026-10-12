@@ -30,3 +30,13 @@ export function useLocalRepo(ref: MrRef) {
   }, [settings.localRepos, key, updateSettings])
   return { path: path?.trim() ? path : null, setPath, loading: config.isPending }
 }
+
+export function useLocalCheckout(ref: MrRef, repoPath: string | null, headSha: string) {
+  return useQuery({
+    queryKey: ['local-checkout', ref.host, ref.project, ref.iid, headSha, repoPath],
+    queryFn: () => api.checkoutLocal(ref, repoPath!),
+    enabled: Boolean(repoPath),
+    staleTime: Infinity,
+    retry: false,
+  })
+}

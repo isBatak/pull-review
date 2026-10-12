@@ -1,4 +1,4 @@
-import type { ChatHost } from './host'
+import type { LocalHost } from './host'
 import { execFile, spawn } from 'node:child_process'
 import { closeSync, constants, openSync } from 'node:fs'
 import { access, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
@@ -14,7 +14,7 @@ function cacheDirFor(home: string) {
   return `${process.env.XDG_CACHE_HOME || `${home}/.cache`}/pull-review`
 }
 
-export function createNodeChatHost(): ChatHost {
+export function createNodeLocalHost(): LocalHost {
   const home = homedir()
   return {
     pid: process.pid,
@@ -44,6 +44,12 @@ export function createNodeChatHost(): ChatHost {
         child.once('close', code => resolve({ code: code ?? 1, stderr }))
       })
       return { kill: () => child.kill('SIGTERM'), exited }
+    },
+
+    launch(args, env) {
+      const child = spawn(args[0]!, args.slice(1), { env, stdio: 'ignore', detached: true })
+      child.on('error', () => {})
+      child.unref()
     },
 
     writeFile: (path, text) => writeFile(path, text),

@@ -27,6 +27,7 @@ export interface AppSettings {
   bundle: BundleSettings
   localRepos: Record<string, string>
   chatSelection: ChatSelectionMode
+  editor: string
 }
 
 export const DEFAULT_BUNDLE_SETTINGS: BundleSettings = {
@@ -47,6 +48,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   bundle: DEFAULT_BUNDLE_SETTINGS,
   localRepos: {},
   chatSelection: 'automatic',
+  editor: 'auto',
 }
 
 export function useSettings() {

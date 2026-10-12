@@ -8,6 +8,7 @@ import { api } from '../../lib/api'
 import { useChatControls, useChatDraft, useChatSession } from '../../lib/chat'
 import { useLocalRepo } from '../../lib/local-repos'
 import { fileName } from '../../lib/format'
+import { LinkRepoForm } from '../link-repo-form'
 import { Button, IconButton } from '../ui/button'
 import { Markdown } from '../ui/markdown'
 
@@ -17,23 +18,6 @@ const SUGGESTIONS = [
   'Are any tests missing for these changes?',
   'Explain how the main change works',
 ]
-
-const pathInput = css({
-  flex: '1',
-  minW: '0',
-  h: '7',
-  px: '2',
-  fontSize: 'xs',
-  fontFamily: 'mono',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  outline: 'none',
-  _focus: { borderColor: 'accent.default' },
-  _placeholder: { color: 'fg.subtle' },
-})
 
 const spinner = css({ animation: 'spin', flexShrink: 0 })
 
@@ -76,24 +60,7 @@ function ContextChip({ context, live, onRemove }: { context: ChatCodeContext, li
   )
 }
 
-function RepoForm({ initial, onSave, onCancel }: { initial: string, onSave: (path: string | null) => void, onCancel: () => void }) {
-  const [value, setValue] = useState(initial)
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSave(value.trim() || null)
-      }}
-      className={css({ display: 'flex', alignItems: 'center', gap: '1.5', mt: '1.5' })}
-    >
-      <input autoFocus value={value} onChange={event => setValue(event.target.value)} placeholder="~/code/project" aria-label="Local repository folder" className={pathInput} />
-      <Button size="xs" type="submit" variant="solid">Save</Button>
-      <Button size="xs" variant="ghost" onClick={onCancel}>Cancel</Button>
-    </form>
-  )
-}
-
-function WorkspaceBar({ workspace, repoPath, onRepoPathChange }: { workspace: ChatWorkspace, repoPath: string | null, onRepoPathChange: (path: string | null) => void }) {
+function WorkspaceBar({ mrRef, workspace, repoPath, onRepoPathChange }: { mrRef: MrRef, workspace: ChatWorkspace, repoPath: string | null, onRepoPathChange: (path: string | null) => void }) {
   const [editing, setEditing] = useState(false)
   const shownKind = repoPath ? workspace.kind : 'diff-only'
 
@@ -118,14 +85,17 @@ function WorkspaceBar({ workspace, repoPath, onRepoPathChange }: { workspace: Ch
         )}
       </div>
       {editing && (
-        <RepoForm
-          initial={repoPath ?? ''}
-          onCancel={() => setEditing(false)}
-          onSave={(path) => {
-            onRepoPathChange(path)
-            setEditing(false)
-          }}
-        />
+        <div className={css({ mt: '2' })}>
+          <LinkRepoForm
+            project={mrRef}
+            initialPath={repoPath ?? ''}
+            onCancel={() => setEditing(false)}
+            onLinked={(path) => {
+              onRepoPathChange(path)
+              setEditing(false)
+            }}
+          />
+        </div>
       )}
     </div>
   )
@@ -264,7 +234,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
         </IconButton>
       </div>
 
-      <WorkspaceBar workspace={state.workspace} repoPath={localRepo.path} onRepoPathChange={localRepo.setPath} />
+      <WorkspaceBar mrRef={mrRef} workspace={state.workspace} repoPath={localRepo.path} onRepoPathChange={localRepo.setPath} />
 
       <div
         ref={scrollRef}

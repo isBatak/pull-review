@@ -99,6 +99,9 @@ export function parseBackup(text: string): ParsedBackup {
   if (raw.groupLayout === 'sidebar' || raw.groupLayout === 'tabs')
     settings.groupLayout = raw.groupLayout
 
+  if (typeof raw.editor === 'string' && raw.editor.trim())
+    settings.editor = raw.editor
+
   if (raw.chatSelection === 'automatic' || raw.chatSelection === 'manual')
     settings.chatSelection = raw.chatSelection
 
