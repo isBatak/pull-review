@@ -20,6 +20,7 @@
     "desktop:build": "node scripts/check-tinyjs.mjs && tinyjs build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "desktop:zip": "node scripts/check-tinyjs.mjs && tinyjs build --universal && ditto -c -k --keepParent \"dist/Pull Review.app\" \"Pull Review $npm_package_version.zip\"",
     "desktop:install": "node scripts/check-tinyjs.mjs && tinyjs build && rm -rf \"/Applications/Pull Review.app\" && cp -R \"dist/Pull Review.app\" /Applications/",
     "build:app-web": "panda codegen && vite build --base ./ --outDir ../../out/app-web --emptyOutDir",
     "build:app": "pnpm run build:app-web && tsdown"

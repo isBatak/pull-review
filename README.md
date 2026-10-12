@@ -33,6 +33,7 @@ pnpm desktop:install                          # builds "Pull Review.app" and cop
 | `pnpm desktop:dev` | Runs the app with the Vite dev server and hot reload |
 | `pnpm desktop:build` | Builds `dist/Pull Review.app`. Add `--universal` for one app that runs on Apple Silicon and Intel |
 | `pnpm desktop:install` | Builds and copies the app to `/Applications` |
+| `pnpm desktop:zip` | Builds a universal app and zips it to `Pull Review <version>.zip` for sharing |
 
 How it fits together:
 
