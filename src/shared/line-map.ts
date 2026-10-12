@@ -117,3 +117,45 @@ export function sideForPosition(oldLine: number | null, newLine: number | null):
     return { side: 'deletions', line: oldLine }
   return null
 }
+
+export function codeForRange(diff: string, side: DiffSide, startLine: number, endLine: number): string | null {
+  const wanted = new Map<number, string>()
+  let oldLine = 0
+  let newLine = 0
+  let inHunk = false
+  for (const line of diffLines(diff)) {
+    const header = HUNK_HEADER.exec(line)
+    if (header) {
+      oldLine = Number(header[1])
+      newLine = Number(header[3])
+      inHunk = true
+      continue
+    }
+    if (!inHunk)
+      continue
+    const text = line.slice(1)
+    if (line.startsWith('+')) {
+      if (side === 'additions')
+        wanted.set(newLine, text)
+      newLine++
+    }
+    else if (line.startsWith('-')) {
+      if (side === 'deletions')
+        wanted.set(oldLine, text)
+      oldLine++
+    }
+    else {
+      wanted.set(side === 'additions' ? newLine : oldLine, text)
+      oldLine++
+      newLine++
+    }
+  }
+  const lines: string[] = []
+  for (let line = startLine; line <= endLine; line++) {
+    const text = wanted.get(line)
+    if (text === undefined)
+      return null
+    lines.push(text)
+  }
+  return lines.join('\n')
+}

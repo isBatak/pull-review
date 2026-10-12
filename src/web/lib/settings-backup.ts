@@ -99,6 +99,15 @@ export function parseBackup(text: string): ParsedBackup {
   if (raw.groupLayout === 'sidebar' || raw.groupLayout === 'tabs')
     settings.groupLayout = raw.groupLayout
 
+  if (raw.chatSelection === 'automatic' || raw.chatSelection === 'manual')
+    settings.chatSelection = raw.chatSelection
+
+  if (isRecord(raw.localRepos)) {
+    settings.localRepos = Object.fromEntries(
+      Object.entries(raw.localRepos).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    )
+  }
+
   if (Array.isArray(raw.teams)) {
     const teams = raw.teams.map(readTeam)
     settings.teams = teams.filter((team): team is Team => team !== null)

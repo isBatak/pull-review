@@ -1,6 +1,6 @@
 import type { DiffFile } from '../../shared/types'
 import type { DiffLayout, ThemeMode } from '../lib/preferences'
-import { ArrowLeft, Check, Columns2, ExternalLink, Layers, Moon, RefreshCw, Rows2, Settings, Sun, WrapText } from 'lucide-react'
+import { ArrowLeft, Check, Columns2, ExternalLink, Layers, Moon, RefreshCw, Rows2, Settings, Sparkles, Sun, WrapText } from 'lucide-react'
 import { Link } from 'react-router'
 import { css } from 'styled-system/css'
 import { badge } from 'styled-system/recipes'
@@ -32,6 +32,8 @@ interface MrHeaderProps {
   onRefresh: () => void
   refreshing: boolean
   onOpenSettings: () => void
+  chatOpen: boolean | null
+  onChatOpenChange: (open: boolean) => void
 }
 
 function ApproveButton() {
@@ -79,7 +81,7 @@ function ApproveButton() {
   )
 }
 
-export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, theme, onThemeChange, onRefresh, refreshing, onOpenSettings }: MrHeaderProps) {
+export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, theme, onThemeChange, onRefresh, refreshing, onOpenSettings, chatOpen, onChatOpenChange }: MrHeaderProps) {
   const { mergeRequest } = useReview()
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
@@ -163,6 +165,11 @@ export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, th
         <IconButton label="Open in GitLab" onClick={() => openExternal(mergeRequest.webUrl)}>
           <ExternalLink />
         </IconButton>
+        {chatOpen !== null && (
+          <IconButton label={chatOpen ? 'Close Claude chat' : 'Ask Claude about this merge request'} onClick={() => onChatOpenChange(!chatOpen)} className={chatOpen ? css({ color: 'accent.fg' }) : undefined}>
+            <Sparkles />
+          </IconButton>
+        )}
         <IconButton label="Settings" onClick={onOpenSettings}>
           <Settings />
         </IconButton>

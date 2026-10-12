@@ -1,5 +1,6 @@
 import type { MrRef } from '../shared/types'
 import type { AppOptions } from './app'
+import type { ChatService } from './chat/service'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { createAdaptorServer } from '@hono/node-server'
@@ -7,6 +8,8 @@ import { cac } from 'cac'
 import open from 'open'
 import { mrAppPath, parseMrRef } from '../shared/mr-ref'
 import { createApp } from './app'
+import { createNodeChatHost } from './chat/node-host'
+import { createChatService } from './chat/service'
 import { detectMrFromGit } from './detect'
 import { resolveToken, tokenHelp } from './token'
 
@@ -38,6 +41,19 @@ async function resolveTarget(input: string | undefined, defaultHost: string | un
   return ref
 }
 
+function stopChatOnExit(chat: ChatService) {
+  let stopping = false
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+      if (stopping)
+        return
+      stopping = true
+      console.log('\n  Cleaning up Claude workspaces…')
+      void chat.dispose().finally(() => process.exit(0))
+    })
+  }
+}
+
 const cli = cac('pull-review')
 
 cli
@@ -60,7 +76,9 @@ cli
     }
 
     const initialPath = ref ? mrAppPath(ref) : '/'
-    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath }, Number(flags.port))
+    const chat = createChatService(createNodeChatHost())
+    stopChatOnExit(chat)
+    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath, cwd: process.cwd(), chat }, Number(flags.port))
     const url = `http://127.0.0.1:${port}${initialPath}`
     console.log(`\n  pull-review is running at ${url}\n  Press Ctrl+C to stop.\n`)
     if (flags.open)
@@ -68,7 +86,7 @@ cli
   })
 
 cli.help()
-cli.version('0.1.0')
+cli.version(__APP_VERSION__)
 
 try {
   cli.parse(process.argv, { run: false })

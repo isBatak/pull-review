@@ -13,9 +13,11 @@ import { Avatar } from '../ui/avatar'
 import { Button, IconButton } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Segmented } from '../ui/segmented'
+import { AiTab } from './ai-tab'
 import { BackupTab } from './backup-tab'
 import { BundleTab } from './bundle-tab'
 import { CategoriesTab } from './categories-tab'
+import { LocalRepos } from './local-repos'
 
 const input = css({
   w: 'full',
@@ -53,7 +55,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
   settings: AppSettings
   onChange: (patch: Partial<AppSettings>) => void
-  initialTab?: 'general' | 'teams' | 'categories' | 'bundle' | 'backup'
+  initialTab?: 'general' | 'teams' | 'categories' | 'bundle' | 'ai' | 'backup'
 }
 
 function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings' | 'onChange'>) {
@@ -113,6 +115,7 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
             : 'Groups appear as a row of tabs above the code. The sidebar shows only the files in the selected group.'}
         </p>
       </div>
+      <LocalRepos settings={settings} onChange={onChange} />
       <div>
         <label className={fieldLabel} htmlFor="settings-jira">Jira site</label>
         <input
@@ -296,12 +299,14 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
                 <Tabs.Trigger value="teams" className={tabTrigger}>Teams</Tabs.Trigger>
                 <Tabs.Trigger value="categories" className={tabTrigger}>Categories</Tabs.Trigger>
                 <Tabs.Trigger value="bundle" className={tabTrigger}>Bundle</Tabs.Trigger>
+                <Tabs.Trigger value="ai" className={tabTrigger}>AI</Tabs.Trigger>
                 <Tabs.Trigger value="backup" className={tabTrigger}>Backup</Tabs.Trigger>
               </Tabs.List>
               <Tabs.Content value="general"><GeneralTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="teams"><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="categories"><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="bundle"><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="ai"><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="backup"><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
             </Tabs.Root>
           </Dialog.Content>

@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
+import type { ChatService } from './chat/service'
 import { createApi } from './api'
+import { detectLocalRepo } from './detect'
 import { resolveToken } from './token'
 
 export { API_HEADER } from './api'
@@ -13,6 +15,8 @@ const LOCAL_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]'])
 export interface AppOptions {
   webRoot?: string
   initialPath?: string
+  cwd?: string
+  chat?: ChatService
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -24,7 +28,9 @@ export function createApp(options: AppOptions = {}) {
     await next()
   })
 
-  app.route('/', createApi({ initialPath: options.initialPath, resolveToken }))
+  const cwd = options.cwd
+  const localRepo = cwd ? detectLocalRepo(cwd).catch(() => null) : Promise.resolve(null)
+  app.route('/', createApi({ initialPath: options.initialPath, resolveToken, chat: options.chat, localRepo: () => localRepo }))
 
   const webRoot = options.webRoot
   if (webRoot && existsSync(webRoot)) {

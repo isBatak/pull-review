@@ -1,7 +1,10 @@
 import type { Context } from 'hono'
 import type { DiffRefs, MrListState, MrRef, NewDiffComment, ProjectRef } from '../shared/types'
+import type { ChatSendInput } from '../shared/chat'
+import type { ChatService } from './chat/service'
 import type { GitlabClient } from './gitlab'
 import { Hono } from 'hono'
+import { ChatError } from './chat/service'
 import { createGitlabClient, GitlabError } from './gitlab'
 import { createGitlabProjectClient } from './gitlab-project'
 import { fileIconName, folderIconName, renderIcon } from './icons'
@@ -13,7 +16,15 @@ export const API_HEADER = 'x-pull-review'
 
 export interface ApiOptions {
   initialPath?: string
+  localRepo?: () => Promise<LocalRepo | null>
   resolveToken: TokenResolver
+  chat?: ChatService
+}
+
+export interface LocalRepo {
+  host: string
+  project: string
+  path: string
 }
 
 type Env = { Variables: { client: GitlabClient, projectClient: ReturnType<typeof createGitlabProjectClient> } }
@@ -59,7 +70,7 @@ function readIds(value: string | undefined): number[] {
 }
 
 function errorResponse(c: Context, error: unknown) {
-  if (error instanceof GitlabError)
+  if (error instanceof GitlabError || error instanceof ChatError)
     return c.json({ error: error.message }, error.status as 400)
   const message = error instanceof Error ? error.message : String(error)
   return c.json({ error: message }, 500)
@@ -76,7 +87,12 @@ export function createApi(options: ApiOptions) {
     await next()
   })
 
-  api.get('/config', c => c.json({ initialPath: options.initialPath ?? null }))
+  api.get('/config', async c => c.json({
+    initialPath: options.initialPath ?? null,
+    localRepo: await options.localRepo?.().catch(() => null) ?? null,
+  }))
+
+  api.get('/chat/status', async c => c.json({ available: Boolean(await options.chat?.available()) }))
 
   api.use('/mr/*', async (c, next) => {
     const ref = readRef(c)
@@ -217,6 +233,51 @@ export function createApi(options: ApiOptions) {
     const input = await c.req.json<{ diffRefs: DiffRefs, oldPath: string | null, newPath: string | null }>()
     return c.json(await c.var.client.fileContents(input.diffRefs, input.oldPath, input.newPath))
   })
+
+  api.use('/mr/chat/*', async (c, next) => {
+    if (!options.chat || !await options.chat.available())
+      return c.json({ error: 'Claude Code is not installed.' }, 404)
+    await next()
+  })
+
+  function chatService() {
+    return options.chat!
+  }
+
+  function loadSnapshot(client: GitlabClient) {
+    return async () => {
+      const [mergeRequest, files] = await Promise.all([client.mergeRequest(), client.diffs()])
+      return { mergeRequest, files }
+    }
+  }
+
+  function chatRef(c: Context) {
+    return readRef(c)!
+  }
+
+  api.get('/mr/chat/state', async (c) => {
+    const since = Number(c.req.query('since')) || 0
+    const wait = Number(c.req.query('wait')) || 0
+    return c.json(await chatService().state(chatRef(c), since, wait))
+  })
+
+  api.post('/mr/chat/prepare', async (c) => {
+    const { repoPath } = await c.req.json<{ repoPath: string | null }>()
+    return c.json(await chatService().prepare(chatRef(c), loadSnapshot(c.var.client), repoPath))
+  })
+
+  api.post('/mr/chat/messages', async (c) => {
+    const input = await c.req.json<ChatSendInput>()
+    return c.json(chatService().send(chatRef(c), loadSnapshot(c.var.client), {
+      text: String(input.text ?? ''),
+      contexts: Array.isArray(input.contexts) ? input.contexts : [],
+      repoPath: input.repoPath ?? null,
+    }))
+  })
+
+  api.post('/mr/chat/stop', async c => c.json(chatService().stop(chatRef(c))))
+
+  api.post('/mr/chat/reset', async c => c.json(await chatService().reset(chatRef(c))))
 
   api.onError((error, c) => errorResponse(c, error))
   app.route('/api', api)

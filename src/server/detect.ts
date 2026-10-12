@@ -1,31 +1,13 @@
 import type { MrRef } from '../shared/types'
+import type { LocalRepo } from './api'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { parseGitRemote } from '../shared/git-remote'
 import { resolveToken, tokenHelp } from './token'
 
+export { parseGitRemote }
+
 const execFileAsync = promisify(execFile)
-
-export interface GitRemote {
-  host: string
-  project: string
-}
-
-export function parseGitRemote(url: string): GitRemote | null {
-  const value = url.trim().replace(/\.git$/, '')
-  const scp = /^[\w.-]+@([^:/]+):(?!\d+\/)(.+)$/.exec(value)
-  if (scp)
-    return { host: scp[1]!, project: scp[2]! }
-  try {
-    const parsed = new URL(value)
-    const project = parsed.pathname.replace(/^\/+/, '')
-    if (!project.includes('/'))
-      return null
-    return { host: parsed.hostname, project }
-  }
-  catch {
-    return null
-  }
-}
 
 async function git(args: string[], cwd: string) {
   const { stdout } = await execFileAsync('git', args, { cwd })
@@ -55,4 +37,11 @@ export async function detectMrFromGit(cwd: string): Promise<MrRef> {
   if (!mr)
     throw new Error(`No open merge request found for branch "${branch}" in ${remote.project}.`)
   return { host: remote.host, project: remote.project, iid: mr.iid }
+}
+
+export async function detectLocalRepo(cwd: string): Promise<LocalRepo | null> {
+  const path = await git(['rev-parse', '--show-toplevel'], cwd).catch(() => null)
+  const remoteUrl = path && await git(['remote', 'get-url', 'origin'], path).catch(() => null)
+  const remote = remoteUrl ? parseGitRemote(remoteUrl) : null
+  return path && remote ? { ...remote, path } : null
 }

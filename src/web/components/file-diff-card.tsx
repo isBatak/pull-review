@@ -1,14 +1,17 @@
 import type { DiffLineAnnotation, FileDiffMetadata, FileDiffOptions, SelectedLineRange } from '@pierre/diffs/react'
+import type { ChatCodeContext } from '../../shared/chat'
 import type { DiffFile, DiffSide, Discussion } from '../../shared/types'
 import type { ReviewStatus } from '../lib/preferences'
 import { parseDiffFromFile, processFile } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
 import { Fruncate } from '@pierre/truncate/react'
-import { ChevronDown, ChevronRight, Copy, ExternalLink, FileWarning, MessageSquare } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Copy, ExternalLink, FileWarning, MessageSquare, Sparkles } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
-import { createLineMap } from '../../shared/line-map'
+import { describeRange } from '../../shared/chat'
+import { codeForRange, createLineMap } from '../../shared/line-map'
 import { api } from '../lib/api'
+import { useChatControls } from '../lib/chat'
 import { directoryName, domIdForFile, fileName } from '../lib/format'
 import { CommentComposer } from './comment-composer'
 import { ImageDiff, isImagePath } from './image-diff'
@@ -90,6 +93,8 @@ function FileDiffCardImpl({
   const [largeDiff, setLargeDiff] = useState<FileDiffMetadata | null>(null)
   const [loadingLarge, setLoadingLarge] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const chat = useChatControls()
+  const [selection, setSelection] = useState<SelectedLineRange | null>(null)
 
   const lineMap = useMemo(() => createLineMap(file.diff), [file.diff])
   const oldPath = file.previousPath ?? file.path
@@ -166,8 +171,9 @@ function FileDiffCardImpl({
     enableGutterUtility: true,
     enableLineSelection: true,
     onGutterUtilityClick: openDraft,
+    onLineSelected: chat ? setSelection : undefined,
     loadDiffFiles: file.isBinary ? undefined : loadContents,
-  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary])
+  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, chat])
 
   const renderAnnotation = useCallback((annotation: DiffLineAnnotation<AnnotationData>) => {
     const { discussions: threads, hasDraft } = annotation.metadata
@@ -197,6 +203,31 @@ function FileDiffCardImpl({
       </div>
     )
   }, [create, file.path, lineMap, oldPath, projectUrl])
+
+  const selectedRange = useMemo(() => {
+    if (!selection)
+      return null
+    const side = selection.endSide ?? selection.side ?? 'additions'
+    return { side, startLine: Math.min(selection.start, selection.end), endLine: Math.max(selection.start, selection.end) }
+  }, [selection])
+
+  const selectionContext = useMemo<ChatCodeContext | null>(() => selectedRange && {
+    ...selectedRange,
+    path: selectedRange.side === 'deletions' ? oldPath : file.path,
+    code: codeForRange(file.diff, selectedRange.side, selectedRange.startLine, selectedRange.endLine),
+  }, [selectedRange, oldPath, file.path, file.diff])
+
+  const chatOpen = chat?.open ?? false
+  const autoSelection = chatOpen && (chat?.autoSelection ?? false)
+  const setChatSelection = chat?.setSelection
+  useEffect(() => {
+    if (autoSelection)
+      setChatSelection?.(file.id, selectionContext)
+  }, [autoSelection, setChatSelection, file.id, selectionContext])
+
+  function askClaude() {
+    chat?.addContext(selectionContext ?? { path: file.path, side: 'additions', startLine: null, endLine: null, code: null })
+  }
 
   const resolvedCount = discussions.filter(discussion => discussion.resolved).length
   const openCount = discussions.length - resolvedCount
@@ -250,6 +281,22 @@ function FileDiffCardImpl({
             <Copy />
           </IconButton>
         </span>
+        {chat && (
+          <span onClick={event => event.stopPropagation()} className={css({ display: 'inline-flex', flexShrink: 0 })}>
+            {selectedRange && !collapsed && !autoSelection
+              ? (
+                  <Button size="xs" onClick={askClaude}>
+                    <Sparkles />
+                    Ask Claude about {describeRange(selectedRange)}
+                  </Button>
+                )
+              : (
+                  <IconButton size="xs" label={selectedRange && !collapsed ? `Keep ${describeRange(selectedRange)} in the question` : 'Ask Claude about this file'} onClick={askClaude}>
+                    <Sparkles />
+                  </IconButton>
+                )}
+          </span>
+        )}
         <div className={css({ ml: 'auto', display: 'flex', alignItems: 'center', gap: '3', flexShrink: 0 })}>
           {discussions.length > 0 && (
             <WithTooltip label={`${openCount} open, ${resolvedCount} resolved`}>

@@ -17,6 +17,7 @@ import type {
   Note,
 } from '../../shared/types'
 
+import type { ChatSendInput, ChatState } from '../../shared/chat'
 import { transport } from './platform'
 
 export class ApiError extends Error {
@@ -55,6 +56,11 @@ async function call<T>(ref: QueryRef, path: string, init: { method?: string, bod
   return data as T
 }
 
+export interface AppConfig {
+  initialPath: string | null
+  localRepo: { host: string, project: string, path: string } | null
+}
+
 export interface MrListParams {
   state: MrListState
   limit: number
@@ -83,7 +89,13 @@ export const api = {
     },
   }),
   projectCounts: (ref: ProjectRef, authorIds?: number[]) => call<MrCounts>(ref, '/project/counts', { query: { authorIds: authorIds?.join(',') } }),
-  config: () => call<{ initialPath: string | null }>(null, '/config'),
+  config: () => call<AppConfig>(null, '/config'),
+  chatStatus: () => call<{ available: boolean }>(null, '/chat/status'),
+  chatState: (ref: MrRef, since: number, wait: number) => call<ChatState>(ref, '/mr/chat/state', { query: { since: String(since), wait: String(wait) } }),
+  chatPrepare: (ref: MrRef, repoPath: string | null) => call<ChatState>(ref, '/mr/chat/prepare', { method: 'POST', body: { repoPath } }),
+  chatSend: (ref: MrRef, input: ChatSendInput) => call<ChatState>(ref, '/mr/chat/messages', { method: 'POST', body: input }),
+  chatStop: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/stop', { method: 'POST' }),
+  chatReset: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/reset', { method: 'POST' }),
   mergeRequest: (ref: MrRef) => call<MrPayload>(ref, '/mr'),
   discussions: (ref: MrRef) => call<Discussion[]>(ref, '/mr/discussions'),
   approvals: (ref: MrRef) => call<Approvals>(ref, '/mr/approvals'),

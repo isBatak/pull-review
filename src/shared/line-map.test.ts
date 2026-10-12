@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countChanges, createLineMap, sideForPosition } from './line-map'
+import { codeForRange, countChanges, createLineMap, sideForPosition } from './line-map'
 
 const diff = [
   '@@ -1,4 +1,5 @@',
@@ -49,5 +49,19 @@ describe('sideForPosition', () => {
     expect(sideForPosition(3, 4)).toEqual({ side: 'additions', line: 4 })
     expect(sideForPosition(3, null)).toEqual({ side: 'deletions', line: 3 })
     expect(sideForPosition(null, null)).toBeNull()
+  })
+})
+
+describe('codeForRange', () => {
+  it('returns new-side lines including context', () => {
+    expect(codeForRange(diff, 'additions', 1, 3)).toBe('a\nB\nB2')
+  })
+
+  it('returns old-side lines including removed ones', () => {
+    expect(codeForRange(diff, 'deletions', 20, 22)).toBe('x\ny\nz')
+  })
+
+  it('returns null when a line is outside the diff', () => {
+    expect(codeForRange(diff, 'additions', 5, 7)).toBeNull()
   })
 })

@@ -1,12 +1,16 @@
 import type { ReactNode } from 'react'
 import { Splitter, useSplitter } from '@ark-ui/react/splitter'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { css } from 'styled-system/css'
 import { useStoredState } from '../lib/stored-state'
 
 const DEFAULT_SIDEBAR_PX = 300
 const MIN_SIDEBAR_PX = 200
 const MAX_SIDEBAR_PERCENT = 50
+const DEFAULT_ASIDE_PX = 420
+const MIN_ASIDE_PX = 320
+const MAX_ASIDE_PERCENT = 50
+const MIN_MAIN_PERCENT = 20
 const WIDE_LAYOUT_MIN_PX = 768
 
 function subscribeToResize(listener: () => void) {
@@ -18,9 +22,16 @@ function useWindowWidth() {
   return useSyncExternalStore(subscribeToResize, () => window.innerWidth)
 }
 
-function sizesFor(sidebarPx: number, total: number) {
-  const percent = Math.min(MAX_SIDEBAR_PERCENT, (sidebarPx / total) * 100)
-  return [percent, 100 - percent]
+function percentOf(px: number, total: number, max: number) {
+  return Math.min(max, (px / total) * 100)
+}
+
+function sizesFor(sidebarPx: number, asidePx: number, total: number) {
+  const sidebar = percentOf(sidebarPx, total, MAX_SIDEBAR_PERCENT)
+  if (asidePx === 0)
+    return [sidebar, 100 - sidebar, 0]
+  const aside = Math.min(percentOf(asidePx, total, MAX_ASIDE_PERCENT), 100 - sidebar - MIN_MAIN_PERCENT)
+  return [sidebar, 100 - sidebar - aside, aside]
 }
 
 const trigger = css({
@@ -43,31 +54,53 @@ const trigger = css({
   '&[data-dragging]': { bg: 'accent.default' },
 })
 
+const fillPanel = css({ display: 'flex', minH: '0', minW: '0', '& > *': { flex: '1', minW: '0' } })
+
 interface ResizableLayoutProps {
   sidebar: ReactNode
+  aside?: ReactNode
+  onAsideClose?: () => void
   children: ReactNode
 }
 
-export function ResizableLayout({ sidebar, children }: ResizableLayoutProps) {
-  const width = useWindowWidth()
+function WideLayout({ sidebar, aside, onAsideClose, children }: ResizableLayoutProps) {
   const [sidebarPx, setSidebarPx] = useStoredState('pull-review:sidebar-width', DEFAULT_SIDEBAR_PX)
-  const [initialSize] = useState(() => sizesFor(sidebarPx, window.innerWidth))
+  const [asidePx, setAsidePx] = useStoredState('pull-review:chat-width', DEFAULT_ASIDE_PX)
+  const hasAside = Boolean(aside)
+  const [initialSize] = useState(() => sizesFor(sidebarPx, hasAside ? asidePx : 0, window.innerWidth))
 
   const splitter = useSplitter({
     panels: [
       { id: 'sidebar', minSize: `${MIN_SIDEBAR_PX}px`, maxSize: `${MAX_SIDEBAR_PERCENT}%`, resizeBehavior: 'preserve-pixel-size' },
       { id: 'main' },
+      { id: 'aside', minSize: `${MIN_ASIDE_PX}px`, maxSize: `${MAX_ASIDE_PERCENT}%`, collapsible: true, collapsedSize: 0, resizeBehavior: 'preserve-pixel-size' },
     ],
     defaultSize: initialSize,
+    onCollapse: (details) => {
+      if (details.panelId === 'aside')
+        onAsideClose?.()
+    },
     onResizeEnd: (details) => {
-      const [percent] = details.size
-      if (percent !== undefined)
-        setSidebarPx(Math.round((percent / 100) * window.innerWidth))
+      const [sidebarPercent, , asidePercent] = details.size
+      if (sidebarPercent !== undefined)
+        setSidebarPx(Math.round((sidebarPercent / 100) * window.innerWidth))
+      if (asidePercent)
+        setAsidePx(Math.round((asidePercent / 100) * window.innerWidth))
     },
   })
 
-  if (width < WIDE_LAYOUT_MIN_PX)
-    return <div className={css({ display: 'flex', minH: '0', '& > *': { flex: '1', minW: '0' } })}>{children}</div>
+  useEffect(() => {
+    if (hasAside)
+      splitter.setSizes(sizesFor(sidebarPx, asidePx, window.innerWidth))
+    else if (!splitter.isPanelCollapsed('aside'))
+      splitter.collapsePanel('aside')
+  }, [hasAside])
+
+  function reset(nextSidebarPx: number, nextAsidePx: number) {
+    splitter.setSizes(sizesFor(nextSidebarPx, hasAside ? nextAsidePx : 0, window.innerWidth))
+    setSidebarPx(nextSidebarPx)
+    setAsidePx(nextAsidePx)
+  }
 
   return (
     <Splitter.RootProvider value={splitter} className={css({ display: 'flex', minH: '0', minW: '0' })}>
@@ -78,14 +111,36 @@ export function ResizableLayout({ sidebar, children }: ResizableLayoutProps) {
         id="sidebar:main"
         aria-label="Resize sidebar. Double-click to reset."
         className={trigger}
-        onDoubleClick={() => {
-          splitter.setSizes(sizesFor(DEFAULT_SIDEBAR_PX, window.innerWidth))
-          setSidebarPx(DEFAULT_SIDEBAR_PX)
-        }}
+        onDoubleClick={() => reset(DEFAULT_SIDEBAR_PX, asidePx)}
       />
-      <Splitter.Panel id="main" className={css({ display: 'flex', minH: '0', minW: '0', '& > *': { flex: '1', minW: '0' } })}>
+      <Splitter.Panel id="main" className={fillPanel}>
         {children}
+      </Splitter.Panel>
+      <Splitter.ResizeTrigger
+        id="main:aside"
+        aria-label="Resize chat. Double-click to reset."
+        hidden={!hasAside}
+        className={trigger}
+        onDoubleClick={() => reset(sidebarPx, DEFAULT_ASIDE_PX)}
+      />
+      <Splitter.Panel id="aside" className={fillPanel}>
+        {aside}
       </Splitter.Panel>
     </Splitter.RootProvider>
   )
+}
+
+export function ResizableLayout({ sidebar, aside, onAsideClose, children }: ResizableLayoutProps) {
+  const width = useWindowWidth()
+
+  if (width < WIDE_LAYOUT_MIN_PX) {
+    return (
+      <div className={css({ position: 'relative', display: 'flex', minH: '0', '& > *': { flex: '1', minW: '0' } })}>
+        {children}
+        {aside && <div className={css({ position: 'absolute', inset: '0', zIndex: 'overlay', display: 'flex', '& > *': { flex: '1', minW: '0' } })}>{aside}</div>}
+      </div>
+    )
+  }
+
+  return <WideLayout sidebar={sidebar} aside={aside} onAsideClose={onAsideClose}>{children}</WideLayout>
 }

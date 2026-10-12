@@ -16,6 +16,8 @@ export interface Team {
 
 export type GroupLayout = 'sidebar' | 'tabs'
 
+export type ChatSelectionMode = 'automatic' | 'manual'
+
 export interface AppSettings {
   project: ProjectRef | null
   jiraBaseUrl: string
@@ -23,6 +25,8 @@ export interface AppSettings {
   groupLayout: GroupLayout
   categories: CategoryConfig[]
   bundle: BundleSettings
+  localRepos: Record<string, string>
+  chatSelection: ChatSelectionMode
 }
 
 export const DEFAULT_BUNDLE_SETTINGS: BundleSettings = {
@@ -41,6 +45,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   groupLayout: 'sidebar',
   categories: DEFAULT_CATEGORIES,
   bundle: DEFAULT_BUNDLE_SETTINGS,
+  localRepos: {},
+  chatSelection: 'automatic',
 }
 
 export function useSettings() {

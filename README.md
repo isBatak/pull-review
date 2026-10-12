@@ -52,6 +52,16 @@ Security settings for the desktop app:
 
 The app is ad-hoc signed. That's fine for an app you built yourself. To share it, sign it with a Developer ID (`signIdentity` in `tinyjs.json`) and run `tinyjs notarize`.
 
+## Claude chat
+
+The review page has a Claude chat panel. Open it with the sparkles button in the header. It shows up only when [Claude Code](https://claude.com/claude-code) is installed.
+
+- The chat runs your installed `claude` command, so it uses your Claude Code login and subscription. It removes `ANTHROPIC_API_KEY` from the environment, so you are never billed through the API by accident.
+- Claude gets the merge request description and full diff. It can only read and search files. It can't run commands or change anything.
+- Select lines in a diff (click a line number, then Shift-click another). While the chat is open they are added to your question right away. To add them only with the **Ask Claude** button instead, change "Selected lines in the Claude chat" in Settings, AI. To include several parts, click the sparkles button in the file header to keep the current lines, then select the next ones.
+- To let Claude read whole files, click **Add folder** in the chat, or use Settings, General, Local repositories, and enter your local clone of the project. The CLI fills this in when you start it inside a matching clone. The app then makes a git worktree at the merge request's head commit in `~/Library/Caches/pull-review`, fetching `refs/merge-requests/<iid>/head` if needed. Your own checkout and branch stay untouched.
+- Worktrees are removed when a merge request's chat is unused for 30 minutes, when the CLI quits, and on the next start after a crash or after the desktop app quits.
+
 ## Authentication
 
 The server reads the token and calls the GitLab API itself. The token never reaches the browser. It looks for one in this order:
