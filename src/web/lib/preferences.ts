@@ -1,10 +1,14 @@
 import type { DiffFile, MrRef } from '../../shared/types'
+import type { Faction } from '../theme/tavern/factions'
 import { useCallback, useEffect } from 'react'
 import { mrKey } from '../../shared/mr-ref'
 import { useStoredState } from './stored-state'
 
 export type DiffLayout = 'split' | 'unified'
 export type ThemeMode = 'light' | 'dark'
+export type ThemeName = 'classic' | 'tavern'
+
+export const THEME_NAMES: ThemeName[] = ['classic', 'tavern']
 
 export function useDiffLayout() {
   return useStoredState<DiffLayout>('pull-review:layout', 'split')
@@ -18,12 +22,35 @@ function systemTheme(): ThemeMode {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+export function useThemeName() {
+  return useStoredState<ThemeName>('pull-review:theme-name', 'classic')
+}
+
+export function useTavernFaction() {
+  return useStoredState<Faction>('pull-review:tavern-faction', 'default')
+}
+
+export function themeHasLightMode(name: ThemeName) {
+  return name === 'classic'
+}
+
 export function useTheme(): [ThemeMode, (mode: ThemeMode) => void] {
   const [stored, setStored] = useStoredState<ThemeMode | null>('pull-review:theme', null)
-  const theme = stored ?? systemTheme()
+  const [name] = useThemeName()
+  const [faction] = useTavernFaction()
+  const theme = themeHasLightMode(name) ? stored ?? systemTheme() : 'dark'
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
+  useEffect(() => {
+    if (name === 'classic')
+      delete document.documentElement.dataset.pandaTheme
+    else
+      document.documentElement.dataset.pandaTheme = name
+  }, [name])
+  useEffect(() => {
+    document.documentElement.dataset.tavernFaction = faction
+  }, [faction])
   return [theme, setStored]
 }
 

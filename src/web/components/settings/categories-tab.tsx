@@ -3,26 +3,12 @@ import type { AppSettings } from '../../lib/settings'
 import { ArrowDown, ArrowUp, FlaskConical, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { input } from 'styled-system/recipes'
 import { createClassifier, DEFAULT_CATEGORIES, parseRules } from '../../../shared/grouping'
 import { createTeamId } from '../../lib/settings'
 import { Button, IconButton } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { FileIcon } from '../ui/file-icon'
-
-const input = css({
-  w: 'full',
-  h: '9',
-  px: '3',
-  fontSize: 'sm',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  outline: 'none',
-  _focus: { borderColor: 'accent.default', boxShadow: '0 0 0 3px color-mix(in srgb, var(--colors-accent-default) 18%, transparent)' },
-  _placeholder: { color: 'fg.subtle' },
-})
 
 const rulesArea = css({
   w: 'full',
@@ -87,7 +73,7 @@ function CategoryEditor({ category, onChange, onDelete }: { category: CategoryCo
       <div className={css({ display: 'flex', gap: '3', alignItems: 'flex-end' })}>
         <div className={css({ flex: '1' })}>
           <label className={fieldLabel} htmlFor="category-name">Name</label>
-          <input id="category-name" className={input} value={category.label} onChange={event => onChange({ label: event.target.value })} />
+          <input id="category-name" className={input()} value={category.label} onChange={event => onChange({ label: event.target.value })} />
         </div>
         {!category.builtin && (
           <IconButton label="Delete category" size="md" variant="outline" onClick={onDelete}>
@@ -97,7 +83,7 @@ function CategoryEditor({ category, onChange, onDelete }: { category: CategoryCo
       </div>
       <div>
         <label className={fieldLabel} htmlFor="category-description">Description</label>
-        <input id="category-description" className={input} value={category.description} onChange={event => onChange({ description: event.target.value })} placeholder="Shown above the files of this category" />
+        <input id="category-description" className={input()} value={category.description} onChange={event => onChange({ description: event.target.value })} placeholder="Shown above the files of this category" />
       </div>
 
       {category.builtin

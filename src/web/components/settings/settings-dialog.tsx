@@ -5,8 +5,10 @@ import { Tabs } from '@ark-ui/react/tabs'
 import { Check, Plus, Search, Trash2, Users, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card, input, tab, tabPanel } from 'styled-system/recipes'
 import { useProjectMembers } from '../../hooks/use-project'
 import { api } from '../../lib/api'
+import { useTavernFaction, useThemeName } from '../../lib/preferences'
 import { teamStyle } from '../../lib/mr-display'
 import { createTeamId, parseProjectInput, TEAM_COLORS } from '../../lib/settings'
 import { Avatar } from '../ui/avatar'
@@ -20,36 +22,10 @@ import { CategoriesTab } from './categories-tab'
 import { EditorSetting } from './editor-setting'
 import { LocalRepos } from './local-repos'
 
-const input = css({
-  w: 'full',
-  h: '9',
-  px: '3',
-  fontSize: 'sm',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  outline: 'none',
-  _focus: { borderColor: 'accent.default', boxShadow: '0 0 0 3px color-mix(in srgb, var(--colors-accent-default) 18%, transparent)' },
-  _placeholder: { color: 'fg.subtle' },
-})
+const tabTrigger = tab({ kind: 'line' })
 
 const fieldLabel = css({ display: 'block', fontSize: 'xs', fontWeight: 'semibold', mb: '1.5' })
 const fieldHint = css({ fontSize: 'xs', color: 'fg.subtle', mt: '1.5' })
-
-const tabTrigger = css({
-  h: '9',
-  px: '1',
-  mr: '4',
-  fontSize: 'sm',
-  fontWeight: 'medium',
-  color: 'fg.muted',
-  borderBottomWidth: '2px',
-  borderColor: 'transparent',
-  cursor: 'pointer',
-  _selected: { color: 'fg.default', borderColor: 'accent.default' },
-})
 
 interface SettingsDialogProps {
   open: boolean
@@ -63,6 +39,8 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
   const [projectInput, setProjectInput] = useState(settings.project ? `https://${settings.project.host}/${settings.project.project}` : '')
   const [jira, setJira] = useState(settings.jiraBaseUrl)
   const [status, setStatus] = useState<{ kind: 'idle' | 'checking' | 'ok' | 'error', message?: string }>({ kind: 'idle' })
+  const [themeName, setThemeName] = useThemeName()
+  const [faction, setFaction] = useTavernFaction()
 
   async function applyProject() {
     const ref = parseProjectInput(projectInput)
@@ -92,13 +70,48 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
             void applyProject()
           }}
         >
-          <input id="settings-project" className={input} value={projectInput} onChange={event => setProjectInput(event.target.value)} placeholder="https://gitlab.tradelocker.com/tradelocker/tradelocker" />
+          <input id="settings-project" className={input()} value={projectInput} onChange={event => setProjectInput(event.target.value)} placeholder="https://gitlab.tradelocker.com/tradelocker/tradelocker" />
           <Button type="submit" variant="solid" size="md" disabled={status.kind === 'checking'}>{status.kind === 'checking' ? 'Checking…' : 'Use project'}</Button>
         </form>
         <p className={cx(fieldHint, css({ color: status.kind === 'error' ? 'danger.fg' : status.kind === 'ok' ? 'success.fg' : 'fg.subtle' }))}>
           {status.message ?? 'The merge request list and team members come from this project.'}
         </p>
       </div>
+      <div>
+        <span className={fieldLabel}>Theme</span>
+        <Segmented
+          label="Theme"
+          value={themeName}
+          onChange={setThemeName}
+          items={[
+            { value: 'classic', label: 'Classic' },
+            { value: 'tavern', label: 'Tavern' },
+          ]}
+        />
+        <p className={fieldHint}>
+          {themeName === 'classic'
+            ? 'The standard look, in light or dark.'
+            : 'Candlelit wood, iron frames and gold trim, in the style of warcraftcn-ui. Always dark.'}
+        </p>
+      </div>
+      {themeName === 'tavern' && (
+        <div>
+          <span className={fieldLabel}>Faction</span>
+          <Segmented
+            label="Faction"
+            value={faction}
+            onChange={setFaction}
+            items={[
+              { value: 'default', label: 'Neutral' },
+              { value: 'human', label: 'Human' },
+              { value: 'orc', label: 'Orc' },
+              { value: 'elf', label: 'Elf' },
+              { value: 'undead', label: 'Undead' },
+            ]}
+          />
+          <p className={fieldHint}>Changes the tabs, checkboxes, avatar frames, loading skeletons, notices, home portrait and mouse cursor.</p>
+        </div>
+      )}
       <div>
         <span className={fieldLabel}>File groups in a review</span>
         <Segmented
@@ -122,7 +135,7 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
         <label className={fieldLabel} htmlFor="settings-jira">Jira site</label>
         <input
           id="settings-jira"
-          className={input}
+          className={input()}
           value={jira}
           onChange={event => setJira(event.target.value)}
           onBlur={() => onChange({ jiraBaseUrl: jira.trim() || 'https://tradelocker.atlassian.net' })}
@@ -164,7 +177,7 @@ function TeamEditor({ team, settings, onChange }: { team: Team } & Pick<Settings
       <div className={css({ display: 'flex', gap: '3', alignItems: 'flex-end' })}>
         <div className={css({ flex: '1' })}>
           <label className={fieldLabel} htmlFor="team-name">Team name</label>
-          <input id="team-name" className={input} value={team.name} onChange={event => patchTeam({ name: event.target.value })} placeholder="Frontend" />
+          <input id="team-name" className={input()} value={team.name} onChange={event => patchTeam({ name: event.target.value })} placeholder="Frontend" />
         </div>
         <IconButton label="Delete team" size="md" variant="outline" onClick={() => onChange({ teams: settings.teams.filter(item => item.id !== team.id) })}>
           <Trash2 />
@@ -285,7 +298,7 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
       <Portal>
         <Dialog.Backdrop className={css({ position: 'fixed', inset: '0', zIndex: 'overlay', bg: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' })} />
         <Dialog.Positioner className={css({ position: 'fixed', inset: '0', zIndex: 'modal', display: 'flex', alignItems: 'center', justifyContent: 'center', p: '6' })}>
-          <Dialog.Content className={css({ w: 'full', maxW: '920px', maxH: 'calc(100dvh - 48px)', overflowY: 'auto', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', boxShadow: 'popover', p: '6', outline: 'none' })}>
+          <Dialog.Content className={cx(card({ floating: true, ornate: true }), css({ w: 'full', maxW: '920px', maxH: 'calc(100dvh - 48px)', overflowY: 'auto', p: '6', outline: 'none' }))}>
             <div className={css({ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: '4' })}>
               <div>
                 <Dialog.Title className={css({ fontSize: 'lg', fontWeight: 'semibold' })}>Settings</Dialog.Title>
@@ -304,12 +317,12 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
                 <Tabs.Trigger value="ai" className={tabTrigger}>AI</Tabs.Trigger>
                 <Tabs.Trigger value="backup" className={tabTrigger}>Backup</Tabs.Trigger>
               </Tabs.List>
-              <Tabs.Content value="general"><GeneralTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="teams"><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="categories"><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="bundle"><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="ai"><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="backup"><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
+              <Tabs.Content value="general" className={tabPanel()}><GeneralTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="teams" className={tabPanel()}><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="categories" className={tabPanel()}><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="bundle" className={tabPanel()}><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="ai" className={tabPanel()}><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="backup" className={tabPanel()}><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
             </Tabs.Root>
           </Dialog.Content>
         </Dialog.Positioner>

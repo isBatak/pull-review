@@ -1,12 +1,24 @@
 import type { SupportedLanguages } from '@pierre/diffs'
 import { getFiletypeFromFileName, getSharedHighlighter, preloadHighlighter } from '@pierre/diffs'
+import type { ThemeName } from './preferences'
 import { useEffect, useState } from 'react'
+import { useThemeName } from './preferences'
+import { readStoredValue } from './stored-state'
 
-export const GITHUB_THEMES = { light: 'github-light-default', dark: 'github-dark-default' } as const
+export const CODE_THEMES = {
+  classic: { light: 'github-light-default', dark: 'github-dark-default' },
+  tavern: { light: 'gruvbox-light-medium', dark: 'gruvbox-dark-medium' },
+} as const satisfies Record<ThemeName, { light: string, dark: string }>
+
+export function useCodeThemes() {
+  const [name] = useThemeName()
+  return CODE_THEMES[name] ?? CODE_THEMES.classic
+}
 
 export function preloadDiffHighlighter() {
+  const themes = CODE_THEMES[readStoredValue<ThemeName>('pull-review:theme-name') ?? 'classic'] ?? CODE_THEMES.classic
   // A diff viewer outside the virtualized Code tab draws nothing if it mounts before the shared highlighter exists.
-  return preloadHighlighter({ themes: [GITHUB_THEMES.light, GITHUB_THEMES.dark], langs: [] })
+  return preloadHighlighter({ themes: [themes.light, themes.dark], langs: [] })
 }
 
 export interface CodeToken {
@@ -24,7 +36,8 @@ const PLAIN_LANGUAGES = new Set<SupportedLanguages>(['text', 'ansi'])
 
 export function useCodeTokens(lines: CodeLine[], theme: 'light' | 'dark') {
   const [tokens, setTokens] = useState<Map<string, CodeToken[]>>(() => new Map())
-  const signature = `${theme}|${lines.map(line => line.key).join('|')}`
+  const themeName = useCodeThemes()[theme]
+  const signature = `${themeName}|${lines.map(line => line.key).join('|')}`
 
   useEffect(() => {
     let cancelled = false
@@ -37,7 +50,6 @@ export function useCodeTokens(lines: CodeLine[], theme: 'light' | 'dark') {
     }
     if (!byLanguage.size)
       return
-    const themeName = GITHUB_THEMES[theme]
     void getSharedHighlighter({ themes: [themeName], langs: [...byLanguage.keys()] })
       .then((highlighter) => {
         if (cancelled)

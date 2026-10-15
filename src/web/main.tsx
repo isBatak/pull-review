@@ -8,8 +8,16 @@ import { ReviewPage } from './pages/review-page'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { isTinyApp, routeExternalLinks } from './lib/platform'
 import { ErrorState } from './pages/states'
+import '@fontsource/alegreya/latin-400.css'
+import '@fontsource/alegreya/latin-400-italic.css'
+import '@fontsource/alegreya/latin-500.css'
+import '@fontsource/alegreya/latin-600.css'
+import '@fontsource/alegreya/latin-700.css'
+import '@fontsource/cinzel/latin-600.css'
+import '@fontsource/cinzel/latin-700.css'
 import '@pierre/truncate/style.css'
 import './index.css'
+import './theme/tavern/frames.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {

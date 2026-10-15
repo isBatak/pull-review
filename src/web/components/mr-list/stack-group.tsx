@@ -1,6 +1,7 @@
 import type { MrStack, StackInfo } from '../../../shared/stacks'
 import { GitBranch, Layers, TriangleAlert } from 'lucide-react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { isWarning } from '../../../shared/stacks'
 import { MrRow } from './mr-row'
 
@@ -20,7 +21,7 @@ export function StackGroup({ stack, stackInfo, defaultBranch, jiraBaseUrl, activ
   const base = stack.root.targetBranch
 
   return (
-    <div className={css({ position: 'relative', m: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', bg: 'bg.surface', overflow: 'hidden' })}>
+    <div className={cx(card(), css({ position: 'relative', m: '2', overflow: 'hidden' }))}>
       <div className={css({ display: 'flex', alignItems: 'center', gap: '2', px: '4', h: '8', bg: 'bg.subtle', borderBottomWidth: '1px', borderColor: 'border.subtle', fontSize: 'xs', color: 'fg.muted', '& svg': { w: '3.5', h: '3.5' } })}>
         <Layers className={css({ color: 'accent.fg' })} />
         <span className={css({ fontWeight: 'semibold', color: 'fg.default' })}>Stack</span>

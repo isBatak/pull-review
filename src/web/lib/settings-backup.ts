@@ -1,6 +1,10 @@
 import type { CategoryConfig } from '../../shared/grouping'
+import type { Faction } from '../theme/tavern/factions'
+import type { ThemeName } from './preferences'
 import type { AppSettings, Team } from './settings'
 import { CHAT_EFFORTS, CHAT_MODELS } from '../../shared/chat'
+import { FACTIONS } from '../theme/tavern/factions'
+import { THEME_NAMES } from './preferences'
 import { DEFAULT_BUNDLE_SETTINGS, DEFAULT_SETTINGS, TEAM_COLORS } from './settings'
 
 export const BACKUP_FORMAT = 'pull-review-settings'
@@ -10,6 +14,8 @@ export const PREFERENCE_KEYS = {
   diffLayout: 'pull-review:layout',
   wrapLines: 'pull-review:wrap',
   theme: 'pull-review:theme',
+  themeName: 'pull-review:theme-name',
+  tavernFaction: 'pull-review:tavern-faction',
   sidebarWidth: 'pull-review:sidebar-width',
 } as const
 
@@ -17,6 +23,8 @@ export interface Preferences {
   diffLayout?: 'split' | 'unified'
   wrapLines?: boolean
   theme?: 'light' | 'dark' | null
+  themeName?: ThemeName
+  tavernFaction?: Faction
   sidebarWidth?: number
 }
 
@@ -170,6 +178,10 @@ export function parseBackup(text: string): ParsedBackup {
     preferences.wrapLines = rawPreferences.wrapLines
   if (rawPreferences.theme === 'light' || rawPreferences.theme === 'dark' || rawPreferences.theme === null)
     preferences.theme = rawPreferences.theme
+  if (THEME_NAMES.includes(rawPreferences.themeName as ThemeName))
+    preferences.themeName = rawPreferences.themeName as ThemeName
+  if (FACTIONS.includes(rawPreferences.tavernFaction as Faction))
+    preferences.tavernFaction = rawPreferences.tavernFaction as Faction
   if (typeof rawPreferences.sidebarWidth === 'number' && rawPreferences.sidebarWidth >= 160 && rawPreferences.sidebarWidth <= 2000)
     preferences.sidebarWidth = Math.round(rawPreferences.sidebarWidth)
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { css } from 'styled-system/css'
 import { mrAppPath, parseMrRef } from '../../shared/mr-ref'
-import { useTheme } from '../lib/preferences'
+import { themeHasLightMode, useTheme, useThemeName } from '../lib/preferences'
 import { IconButton } from './ui/button'
 import { ProjectAvatar } from './ui/project-avatar'
 
@@ -27,6 +27,7 @@ interface AppHeaderProps {
 export function AppHeader({ project, projectInfo, onOpenSettings }: AppHeaderProps) {
   const navigate = useNavigate()
   const [theme, setTheme] = useTheme()
+  const [themeName] = useThemeName()
   const [value, setValue] = useState('')
   const [error, setError] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -131,9 +132,11 @@ export function AppHeader({ project, projectInfo, onOpenSettings }: AppHeaderPro
       </form>
 
       <div className={css({ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1' })}>
-        <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun /> : <Moon />}
-        </IconButton>
+        {themeHasLightMode(themeName) && (
+          <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? <Sun /> : <Moon />}
+          </IconButton>
+        )}
         <IconButton label="Settings" onClick={onOpenSettings}>
           <Settings />
         </IconButton>

@@ -6,7 +6,8 @@ import type { Team } from '../lib/settings'
 import { FolderGit2, GitPullRequest, Layers, RefreshCw } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card, hero, skeleton } from 'styled-system/recipes'
 import { parseMrTitle } from '../../shared/mr-title'
 import { analyzeStacks, groupIntoStacks, isWarning } from '../../shared/stacks'
 import { AppHeader } from '../components/app-header'
@@ -72,10 +73,10 @@ function SkeletonRows() {
     <div aria-hidden>
       {Array.from({ length: 6 }, (_, index) => (
         <div key={index} className={css({ display: 'flex', gap: '3', px: '4', py: '3.5', '& + &': { borderTopWidth: '1px', borderColor: 'border.subtle' } })}>
-          <span className={css({ w: '4', h: '4', borderRadius: 'full', bg: 'bg.muted' })} />
+          <span className={cx(skeleton({ shape: 'circle' }), css({ w: '4', h: '4' }))} />
           <div className={css({ flex: '1', display: 'flex', flexDir: 'column', gap: '2' })}>
-            <span className={css({ h: '3.5', borderRadius: 'sm', bg: 'bg.muted', animation: 'pulse' })} style={{ width: `${45 + ((index * 17) % 40)}%` }} />
-            <span className={css({ h: '2.5', w: '40%', borderRadius: 'sm', bg: 'bg.subtle', animation: 'pulse' })} />
+            <span className={cx(skeleton(), css({ h: '3.5' }))} style={{ width: `${45 + ((index * 17) % 40)}%` }} />
+            <span className={cx(skeleton({ tone: 'soft' }), css({ h: '2.5', w: '40%' }))} />
           </div>
         </div>
       ))}
@@ -97,7 +98,8 @@ function ProjectOnboarding({ onPick }: { onPick: (value: string) => boolean }) {
   const [value, setValue] = useState('https://gitlab.tradelocker.com/tradelocker/tradelocker')
   const [error, setError] = useState(false)
   return (
-    <div className={css({ maxW: 'xl', mx: 'auto', mt: '20', p: '8', textAlign: 'center', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', '& > svg': { w: '8', h: '8', color: 'accent.fg', mx: 'auto', mb: '3' } })}>
+    <div className={cx(card({ ornate: true }), css({ maxW: 'xl', mx: 'auto', mt: '20', p: '8', textAlign: 'center', '& > svg': { w: '8', h: '8', color: 'accent.fg', mx: 'auto', mb: '3' }, _tavern: { '& > svg': { display: 'none' } } }))}>
+      <span className={hero()} aria-hidden />
       <FolderGit2 />
       <h1 className={css({ fontSize: 'xl', fontWeight: 'semibold' })}>Pick a GitLab project</h1>
       <p className={css({ color: 'fg.muted', fontSize: 'sm', mt: '1.5', mb: '5' })}>Its merge requests show up here. You can always paste any merge request link in the bar above.</p>
@@ -386,7 +388,7 @@ export function HomePage() {
 
           <TagFilters tags={tags} active={activeTags} onToggle={toggleTag} onClear={() => setParam('apps', null)} />
 
-          <section className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' })}>
+          <section className={cx(card(), css({ borderRadius: 'xl', overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }))}>
             {isOpen && (
               <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3', px: '2', py: '1.5', borderBottomWidth: '1px', borderColor: 'border.default', bg: 'bg.subtle' })}>
                 <QuickFilters value={quick} onChange={value => setParam('quick', value === 'all' ? null : value)} counts={quickCounts} />

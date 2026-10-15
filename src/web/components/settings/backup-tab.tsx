@@ -13,6 +13,8 @@ function currentPreferences(): Preferences {
     diffLayout: readStoredValue(PREFERENCE_KEYS.diffLayout),
     wrapLines: readStoredValue(PREFERENCE_KEYS.wrapLines),
     theme: readStoredValue(PREFERENCE_KEYS.theme) ?? null,
+    themeName: readStoredValue(PREFERENCE_KEYS.themeName),
+    tavernFaction: readStoredValue(PREFERENCE_KEYS.tavernFaction),
     sidebarWidth: readStoredValue(PREFERENCE_KEYS.sidebarWidth),
   }
 }
@@ -24,6 +26,10 @@ function applyPreferences(preferences: Preferences) {
     writeStoredValue(PREFERENCE_KEYS.wrapLines, preferences.wrapLines)
   if (preferences.theme !== undefined)
     writeStoredValue(PREFERENCE_KEYS.theme, preferences.theme)
+  if (preferences.themeName)
+    writeStoredValue(PREFERENCE_KEYS.themeName, preferences.themeName)
+  if (preferences.tavernFaction)
+    writeStoredValue(PREFERENCE_KEYS.tavernFaction, preferences.tavernFaction)
   if (preferences.sidebarWidth)
     writeStoredValue(PREFERENCE_KEYS.sidebarWidth, preferences.sidebarWidth)
 }

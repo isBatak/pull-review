@@ -1,12 +1,13 @@
 import type { DiffFile, MergeRequest } from '../../shared/types'
 import type { PixelDiff } from '../lib/pixel-diff'
 import { useQuery } from '@tanstack/react-query'
-import { ImageOff, LoaderCircle } from 'lucide-react'
+import { ImageOff } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { api } from '../lib/api'
 import { computePixelDiff } from '../lib/pixel-diff'
 import { Segmented } from './ui/segmented'
+import { Spinner } from './ui/spinner'
 
 const IMAGE_PATH = /\.(?:png|jpe?g|gif|webp|avif|bmp|ico)$/i
 
@@ -68,7 +69,7 @@ function ImagePane({ label, tone, image, size, onSize }: { label: string, tone: 
       <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'center', minH: '32', p: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', overflow: 'hidden' })} style={{ borderColor: tone === 'old' ? 'color-mix(in srgb, var(--colors-danger-fg) 35%, transparent)' : 'color-mix(in srgb, var(--colors-success-fg) 35%, transparent)' }}>
         <div className={checkerboard} style={{ display: 'inline-flex', maxWidth: '100%' }}>
           {!image && <span className={css({ p: '6', fontSize: 'xs', color: 'fg.subtle' })}>No image on this side</span>}
-          {image?.loading && <LoaderCircle className={css({ m: '6', w: '5', h: '5', color: 'fg.subtle', animation: 'spin' })} />}
+          {image?.loading && <Spinner className={css({ m: '6', w: '5', h: '5', color: 'fg.subtle' })} />}
           {image?.error && <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1.5', p: '6', fontSize: 'xs', color: 'danger.fg', '& svg': { w: '4', h: '4' } })}><ImageOff />{image.error.message}</span>}
           {image?.url && (
             <img
@@ -203,7 +204,7 @@ function DifferenceView({ cacheKey, before, after }: { cacheKey: string, before:
   const { diff, url, loading, error } = usePixelDiff(cacheKey, before, after)
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '3', alignItems: 'center' })}>
-      {loading && <LoaderCircle className={css({ m: '6', w: '5', h: '5', color: 'fg.subtle', animation: 'spin' })} />}
+      {loading && <Spinner className={css({ m: '6', w: '5', h: '5', color: 'fg.subtle' })} />}
       {error && <span className={css({ fontSize: 'xs', color: 'danger.fg' })}>{error.message}</span>}
       {diff && (
         <p className={css({ fontSize: 'xs', color: 'fg.muted', textAlign: 'center' })}>

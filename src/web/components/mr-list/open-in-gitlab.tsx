@@ -3,7 +3,8 @@ import type { ListFilters } from '../../lib/gitlab-list-link'
 import { Menu } from '@ark-ui/react/menu'
 import { Portal } from '@ark-ui/react/portal'
 import { ChevronDown, ExternalLink, Users } from 'lucide-react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { gitlabListLink } from '../../lib/gitlab-list-link'
 import { openExternal } from '../../lib/platform'
 import { Avatar } from '../ui/avatar'
@@ -46,7 +47,7 @@ export function OpenInGitlab({ filters, people }: { filters: ListFilters, people
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner className={css({ zIndex: 'popover' })}>
-          <Menu.Content className={css({ minW: '64', maxH: '96', overflowY: 'auto', p: '1', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', boxShadow: 'popover', outline: 'none' })}>
+          <Menu.Content className={cx(card({ floating: true }), css({ minW: '64', maxH: '96', overflowY: 'auto', p: '1', outline: 'none' }))}>
             <p className={css({ px: '2', pt: '1.5', pb: '2', fontSize: 'xs', color: 'fg.muted', maxW: '72', lineHeight: '1.5' })}>
               GitLab can filter by one author at a time.
               {otherMissing.length > 0 && ` It also can't filter by ${otherMissing.join(', ')}.`}

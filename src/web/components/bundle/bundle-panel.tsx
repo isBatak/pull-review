@@ -1,9 +1,10 @@
 import type { AnalyzerNode, BundleAnalysis, FileComparison, ModuleSizeKey, RouteComparison, SizeDelta } from '../../../shared/bundle'
 import type { ReactNode } from 'react'
 import type { BundleArtifacts, BundleArtifactSide, BundleSettings, MrRef } from '../../../shared/types'
-import { ChevronDown, ChevronRight, ExternalLink, LoaderCircle, Package } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, Package } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { APP_CODE_LABEL, compareBundles, comparePackages } from '../../../shared/bundle'
 import { useBundleArtifacts } from '../../hooks/use-merge-request'
 import { formatBytes } from '../../lib/bytes'
@@ -13,8 +14,9 @@ import { Button } from '../ui/button'
 import { Segmented } from '../ui/segmented'
 import { ModuleTreemap } from './module-treemap'
 import { DeltaPill } from './size-delta'
+import { Spinner } from '../ui/spinner'
 
-const card = css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg' })
+const panel = card()
 const sectionTitle = css({ fontSize: 'sm', fontWeight: 'semibold' })
 const sectionHint = css({ fontSize: 'xs', color: 'fg.muted' })
 const numeric = css({ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', textAlign: 'right' })
@@ -44,8 +46,8 @@ function SideLink({ label, side }: { label: string, side: BundleArtifactSide }) 
 
 function Notice({ title, children, busy }: { title: string, children: ReactNode, busy?: boolean }) {
   return (
-    <div className={cx(card, css({ p: '6', display: 'flex', flexDir: 'column', alignItems: 'center', gap: '2', textAlign: 'center', '& svg': { w: '6', h: '6', color: 'fg.subtle' } }))}>
-      {busy ? <LoaderCircle className={css({ animation: 'spin' })} /> : <Package />}
+    <div className={cx(panel, css({ p: '6', display: 'flex', flexDir: 'column', alignItems: 'center', gap: '2', textAlign: 'center', '& svg': { w: '6', h: '6', color: 'fg.subtle' } }))}>
+      {busy ? <Spinner /> : <Package />}
       <h2 className={css({ fontSize: 'md', fontWeight: 'semibold' })}>{title}</h2>
       <div className={css({ fontSize: 'sm', color: 'fg.muted', maxW: '560px', display: 'flex', flexDir: 'column', gap: '2' })}>{children}</div>
     </div>
@@ -114,7 +116,7 @@ function MissingCurrent({ data, settings }: { data: BundleArtifacts, settings: B
 
 function SummaryCard({ label, value, delta, hint }: { label: string, value: string, delta?: SizeDelta | null, hint?: ReactNode }) {
   return (
-    <div className={cx(card, css({ p: '4', display: 'flex', flexDir: 'column', gap: '1', minW: '0' }))}>
+    <div className={cx(panel, css({ p: '4', display: 'flex', flexDir: 'column', gap: '1', minW: '0' }))}>
       <span className={css({ fontSize: 'xs', color: 'fg.muted', fontWeight: 'medium' })}>{label}</span>
       <span className={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2' })}>
         <span className={css({ fontSize: 'xl', fontWeight: 'semibold', fontVariantNumeric: 'tabular-nums' })}>{value}</span>
@@ -176,7 +178,7 @@ function RoutesTable({ routes, hasBase }: { routes: RouteComparison[], hasBase: 
   }
 
   return (
-    <section className={card}>
+    <section className={panel}>
       <header className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3', flexWrap: 'wrap', px: '4', py: '3' })}>
         <div>
           <h2 className={sectionTitle}>Routes</h2>
@@ -224,7 +226,7 @@ function RoutesTable({ routes, hasBase }: { routes: RouteComparison[], hasBase: 
 
 function SharedChunks({ files, total, hasBase }: { files: FileComparison[], total: SizeDelta, hasBase: boolean }) {
   return (
-    <section className={card}>
+    <section className={panel}>
       <header className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3', px: '4', py: '3' })}>
         <div>
           <h2 className={sectionTitle}>Shared chunks</h2>
@@ -292,7 +294,7 @@ function PackageChanges({ current, base, sizeKey }: { current: AnalyzerNode[], b
 function Modules({ current, base }: { current: AnalyzerNode[], base: AnalyzerNode[] | null }) {
   const [sizeKey, setSizeKey] = useState<ModuleSizeKey>('gzipSize')
   return (
-    <section className={card}>
+    <section className={panel}>
       <header className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3', flexWrap: 'wrap', px: '4', py: '3' })}>
         <div>
           <h2 className={sectionTitle}>Modules</h2>
@@ -320,7 +322,7 @@ function ServerRoutes({ comparison, hasBase }: { comparison: ReturnType<typeof c
   if (!comparison.length)
     return null
   return (
-    <section className={card}>
+    <section className={panel}>
       <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} className={css({ w: 'full', display: 'flex', alignItems: 'center', gap: '2', px: '4', py: '3', textAlign: 'left', cursor: 'pointer', '& svg': { w: '4', h: '4', color: 'fg.subtle' } })}>
         {open ? <ChevronDown /> : <ChevronRight />}
         <span className={css({ flex: '1' })}>
@@ -391,7 +393,7 @@ function BundleReport({ data, settings }: { data: BundleArtifacts, settings: Bun
       {currentModules?.length
         ? <Modules current={currentModules} base={baseModules?.length ? baseModules : null} />
         : (
-            <div className={cx(card, css({ px: '4', py: '3', fontSize: 'sm', color: 'fg.muted' }))}>
+            <div className={cx(panel, css({ px: '4', py: '3', fontSize: 'sm', color: 'fg.muted' }))}>
               The build kept no module data, so there is no module treemap. Builds need
               {' '}
               <code className={css({ fontFamily: 'mono', fontSize: 'xs' })}>{settings.modulesPath}</code>

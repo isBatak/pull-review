@@ -4,7 +4,7 @@ import { FileDiff } from '@pierre/diffs/react'
 import { FileDiff as FileDiffIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { css } from 'styled-system/css'
-import { GITHUB_THEMES } from '../lib/code-tokens'
+import { useCodeThemes } from '../lib/code-tokens'
 import { useTheme } from '../lib/preferences'
 
 const diffStyle = {
@@ -19,6 +19,7 @@ function asFileContents(text: string) {
 
 export function SuggestionBlock({ path, original, suggested }: { path: string, original: string, suggested: string }) {
   const [theme] = useTheme()
+  const codeThemes = useCodeThemes()
   const fileDiff = useMemo(
     () => parseDiffFromFile({ name: path, contents: asFileContents(original) }, { name: path, contents: asFileContents(suggested.replace(/\n$/, '')) }),
     [path, original, suggested],
@@ -26,12 +27,12 @@ export function SuggestionBlock({ path, original, suggested }: { path: string, o
   const options = useMemo<FileDiffOptions<undefined, undefined>>(() => ({
     diffStyle: 'unified',
     overflow: 'wrap',
-    theme: GITHUB_THEMES,
+    theme: codeThemes,
     themeType: theme,
     disableFileHeader: true,
     disableLineNumbers: true,
     lineDiffType: 'word-alt',
-  }), [theme])
+  }), [theme, codeThemes])
 
   return (
     <div className={css({ borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', overflow: 'hidden', fontFamily: 'body' })}>

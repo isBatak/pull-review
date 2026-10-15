@@ -1,6 +1,7 @@
 import type { Discussion } from '../../shared/types'
 import { FileCode2 } from 'lucide-react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { CommentComposer } from './comment-composer'
 import { useReview, useReviewActions } from './review-context'
 import { ThreadCard } from './thread-card'
@@ -20,7 +21,7 @@ export function OverviewPanel({ general, detached }: OverviewPanelProps) {
 
   return (
     <div id="overview" className={css({ display: 'flex', flexDir: 'column', gap: '6', scrollMarginTop: '2' })}>
-      <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', p: '4' })}>
+      <div className={cx(card(), css({ p: '4' }))}>
         <div className={css({ display: 'flex', alignItems: 'center', gap: '2', mb: '3', fontSize: 'xs', color: 'fg.muted' })}>
           <Avatar user={mergeRequest.author} size={20} />
           <span className={css({ fontWeight: 'semibold', color: 'fg.default' })}>{mergeRequest.author.name}</span>
@@ -61,7 +62,7 @@ export function OverviewPanel({ general, detached }: OverviewPanelProps) {
         </div>
       )}
 
-      <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', p: '3' })}>
+      <div className={cx(card(), css({ p: '3' }))}>
         <h2 className={sectionTitle}>Add a comment</h2>
         <CommentComposer
           submitLabel="Comment"

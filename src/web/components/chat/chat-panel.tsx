@@ -1,7 +1,7 @@
 import type { ChatCodeContext, ChatMessage, ChatWorkspace } from '../../../shared/chat'
 import type { PromptViewerRequest } from './prompt-viewer'
 import type { MrRef } from '../../../shared/types'
-import { ArrowUp, Check, ClipboardCopy, Eye, FileCode2, FolderGit2, GitPullRequestArrow, Loader2, MessageSquare, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ClipboardCopy, Eye, FileCode2, FolderGit2, GitPullRequestArrow, MessageSquare, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -22,6 +22,7 @@ import { Markdown } from '../ui/markdown'
 import { Select } from '../ui/select'
 import { parsePatch, PatchView } from './patch-view'
 import { PromptViewer } from './prompt-viewer'
+import { Spinner } from '../ui/spinner'
 
 const SUGGESTIONS = [
   'Summarize this merge request',
@@ -29,8 +30,6 @@ const SUGGESTIONS = [
   'Are any tests missing for these changes?',
   'Explain how the main change works',
 ]
-
-const spinner = css({ animation: 'spin', flexShrink: 0 })
 
 function describeThreads(count: number) {
   return count === 1 ? '1 review thread' : `${count} review threads`
@@ -110,7 +109,7 @@ function WorkspaceBar({ mrRef, workspace, repoPath, onRepoPathChange }: { mrRef:
 
   let message: React.ReactNode
   if (shownKind === 'preparing' || (repoPath && shownKind === 'diff-only'))
-    message = <><Loader2 className={spinner} /> Preparing a copy of the repository at this merge request…</>
+    message = <><Spinner /> Preparing a copy of the repository at this merge request…</>
   else if (shownKind === 'ready' && workspace.kind === 'ready')
     message = <><FolderGit2 /> Full files from {workspace.repoPath} at {workspace.headSha.slice(0, 8)}</>
   else if (shownKind === 'error' && workspace.kind === 'error')
@@ -228,7 +227,7 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
           {copied ? 'Copied' : 'Copy patch'}
         </Button>
         <Button size="xs" disabled={suggest.kind === 'working'} title="Open comment boxes on the changed lines, filled with GitLab suggestions. Nothing is posted until you click Comment." onClick={() => void suggestInGitlab()}>
-          {suggest.kind === 'working' ? <Loader2 className={spinner} /> : <MessageSquarePlus />}
+          {suggest.kind === 'working' ? <Spinner /> : <MessageSquarePlus />}
           Suggest in GitLab
         </Button>
         {repoPath && (
@@ -238,7 +237,7 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
             title={`Apply to ${repoPath}`}
             onClick={() => void applyToRepo()}
           >
-            {apply.kind === 'applying' ? <Loader2 className={spinner} /> : <GitPullRequestArrow />}
+            {apply.kind === 'applying' ? <Spinner /> : <GitPullRequestArrow />}
             {apply.kind === 'applied' ? 'Applied' : 'Apply to local repository'}
           </Button>
         )}
@@ -340,7 +339,7 @@ function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewP
       )}
       {waiting && (
         <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', color: 'fg.subtle', '& svg': { w: '3.5', h: '3.5' } })}>
-          <Loader2 className={spinner} />
+          <Spinner />
           {message.tools.length ? 'Reading the code…' : 'Thinking…'}
         </div>
       )}
