@@ -27,7 +27,6 @@ const item = css({
   zIndex: 1,
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '1',
   h: '6',
   px: '2',
   fontSize: 'xs',
@@ -38,6 +37,8 @@ const item = css({
   _checked: { color: 'fg.default' },
   '& svg': { w: '3.5', h: '3.5' },
 })
+
+const itemText = css({ display: 'inline-flex', alignItems: 'center', gap: '1' })
 
 interface SegmentedProps<T extends string> {
   value: T
@@ -57,7 +58,7 @@ export function Segmented<T extends string>({ value, onChange, items, label }: S
       <SegmentGroup.Indicator className={indicator} />
       {items.map(entry => (
         <SegmentGroup.Item key={entry.value} value={entry.value} className={item} title={entry.title}>
-          <SegmentGroup.ItemText>{entry.label}</SegmentGroup.ItemText>
+          <SegmentGroup.ItemText className={itemText}>{entry.label}</SegmentGroup.ItemText>
           <SegmentGroup.ItemControl />
           <SegmentGroup.ItemHiddenInput />
         </SegmentGroup.Item>
