@@ -9,6 +9,7 @@ interface HunkRange {
 
 export interface LineMap {
   resolve: (side: DiffSide, line: number) => { oldLine: number | null, newLine: number | null }
+  shows: (side: DiffSide, line: number) => boolean
 }
 
 export interface ChangeCounts {
@@ -97,6 +98,9 @@ export function createLineMap(diff: string): LineMap {
   }
 
   return {
+    shows(side, line) {
+      return side === 'additions' ? added.has(line) || contextNewToOld.has(line) : removed.has(line) || contextOldToNew.has(line)
+    },
     resolve(side, line) {
       if (side === 'additions') {
         if (added.has(line))

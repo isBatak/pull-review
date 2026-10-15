@@ -40,3 +40,18 @@ export function useLocalCheckout(ref: MrRef, repoPath: string | null, headSha: s
     retry: false,
   })
 }
+
+export function localChangesKey(ref: MrRef, repoPath: string | null) {
+  return ['local-changes', ref.host, ref.project, ref.iid, repoPath] as const
+}
+
+export function useLocalChanges(ref: MrRef, repoPath: string | null, headSha: string) {
+  return useQuery({
+    queryKey: [...localChangesKey(ref, repoPath), headSha],
+    queryFn: () => api.localChanges(ref, repoPath!, headSha),
+    enabled: Boolean(repoPath),
+    refetchOnWindowFocus: true,
+    refetchInterval: 15_000,
+    retry: false,
+  })
+}

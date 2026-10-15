@@ -26,6 +26,7 @@ export interface LocalHost {
   stream: (args: string[], options: StreamOptions) => StreamedProcess
   launch: (args: string[], env: Record<string, string>) => void
   writeFile: (path: string, text: string) => Promise<void>
+  readFile: (path: string) => Promise<string | null>
   makeDir: (path: string) => Promise<void>
   remove: (path: string) => Promise<void>
   listDir: (path: string) => Promise<string[]>

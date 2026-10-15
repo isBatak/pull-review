@@ -8,6 +8,9 @@ const settings = {
   project: { host: 'gitlab.tradelocker.com', project: 'tradelocker/tradelocker' },
   teams: [{ id: 't1', name: 'Frontend', color: 'blue' as const, members: ['ivica.batinic'] }],
   groupLayout: 'tabs' as const,
+  chatModel: 'opus',
+  commitModel: 'sonnet',
+  commitEffort: 'medium',
 }
 
 describe('settings backup', () => {

@@ -17,7 +17,9 @@ import type {
   Note,
 } from '../../shared/types'
 
-import type { ChatSendInput, ChatState } from '../../shared/chat'
+import type { ChatPromptView, ChatSendInput, ChatState } from '../../shared/chat'
+import type { CommitPlan, CommitPlanInput, CommitResult, PlannedCommit } from '../../shared/commit-plan'
+import type { LocalChanges } from '../../shared/local-changes'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
 import type { SymbolHit } from '../../shared/symbols'
 import { transport } from './platform'
@@ -96,6 +98,15 @@ export const api = {
   inspectLocalFolder: (input: { path: string, project: string }) => call<LocalFolderInfo>(null, '/local/inspect', { method: 'POST', body: input }),
   createLocalWorktree: (input: { sourcePath: string, targetPath: string, project: string }) =>
     call<{ path: string }>(null, '/local/worktree', { method: 'POST', body: input }),
+  localChanges: (ref: MrRef, repoPath: string, headSha: string) => call<LocalChanges>(ref, '/mr/local/changes', { query: { repoPath, headSha } }),
+  planCommits: (ref: MrRef, input: CommitPlanInput) => call<CommitPlan>(ref, '/mr/local/commit-plan', { method: 'POST', body: input }),
+  commitLocalChanges: (ref: MrRef, input: { repoPath: string, commits: PlannedCommit[], push: boolean, skipHooks: boolean }) =>
+    call<CommitResult>(ref, '/mr/local/commit', { method: 'POST', body: input }),
+  pushLocalCommits: (ref: MrRef, repoPath: string) => call<{ pushed: boolean }>(ref, '/mr/local/push', { method: 'POST', body: { repoPath } }),
+  discardLocalChanges: (ref: MrRef, repoPath: string, paths: string[] | null) =>
+    call<{ discarded: string[] }>(ref, '/mr/local/discard', { method: 'POST', body: { repoPath, paths } }),
+  applyPatch: (ref: MrRef, repoPath: string, patch: string) =>
+    call<{ path: string, files: string[] }>(ref, '/mr/local/apply-patch', { method: 'POST', body: { repoPath, patch } }),
   checkoutLocal: (ref: MrRef, repoPath: string) => call<LocalCheckout>(ref, '/mr/local/checkout', { method: 'POST', body: { repoPath } }),
   editorStatus: () => call<{ detected: string | null, installed: string[] }>(null, '/editor'),
   openInEditor: (input: { repoPath: string, path: string, line: number, column: number, editor: string }) =>
@@ -105,6 +116,8 @@ export const api = {
   chatState: (ref: MrRef, since: number, wait: number) => call<ChatState>(ref, '/mr/chat/state', { query: { since: String(since), wait: String(wait) } }),
   chatPrepare: (ref: MrRef, repoPath: string | null) => call<ChatState>(ref, '/mr/chat/prepare', { method: 'POST', body: { repoPath } }),
   chatSend: (ref: MrRef, input: ChatSendInput) => call<ChatState>(ref, '/mr/chat/messages', { method: 'POST', body: input }),
+  chatPreview: (ref: MrRef, input: ChatSendInput) => call<ChatPromptView>(ref, '/mr/chat/preview', { method: 'POST', body: input }),
+  chatSent: (ref: MrRef, messageId: string) => call<ChatPromptView>(ref, '/mr/chat/sent', { query: { messageId } }),
   chatStop: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/stop', { method: 'POST' }),
   chatReset: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/reset', { method: 'POST' }),
   mergeRequest: (ref: MrRef) => call<MrPayload>(ref, '/mr'),

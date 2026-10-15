@@ -1,9 +1,10 @@
-import type { MergeRequest, User } from '../../shared/types'
+import type { DiffFile, MergeRequest, User } from '../../shared/types'
 import { createContext, use } from 'react'
 import { useDiscussionActions } from '../hooks/use-merge-request'
 
 export interface ReviewContextValue {
   mergeRequest: MergeRequest
+  files: DiffFile[]
   viewer: User
   projectUrl: string
 }

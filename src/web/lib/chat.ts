@@ -1,4 +1,5 @@
 import type { ChatCodeContext, ChatState } from '../../shared/chat'
+import type { SuggestionDraft } from '../../shared/suggestions'
 import type { MrRef } from '../../shared/types'
 import { useQuery } from '@tanstack/react-query'
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -62,6 +63,14 @@ export interface ChatControls {
   autoSelection: boolean
   addContext: (context: ChatCodeContext) => void
   setSelection: (owner: string, context: ChatCodeContext | null) => void
+  suggestionDrafts: OpenSuggestion[]
+  openSuggestions: (drafts: SuggestionDraft[]) => void
+  closeSuggestion: (id: string) => void
+}
+
+export interface OpenSuggestion extends SuggestionDraft {
+  id: string
+  first: boolean
 }
 
 export interface ChatDraft {
@@ -98,6 +107,17 @@ interface OwnedSelection {
 export function useChatState(open: boolean, setOpen: (open: boolean) => void, autoSelection: boolean) {
   const [contexts, setContexts] = useState<ChatCodeContext[]>([])
   const [selection, setSelectionState] = useState<OwnedSelection | null>(null)
+  const [suggestionDrafts, setSuggestionDrafts] = useState<OpenSuggestion[]>([])
+
+  const openSuggestions = useCallback((drafts: SuggestionDraft[]) => {
+    setSuggestionDrafts(current => [
+      ...current.map(draft => ({ ...draft, first: false })),
+      ...drafts
+        .filter(draft => !current.some(open => open.path === draft.path && open.line === draft.line))
+        .map((draft, index) => ({ ...draft, id: crypto.randomUUID(), first: index === 0 })),
+    ])
+  }, [])
+  const closeSuggestion = useCallback((id: string) => setSuggestionDrafts(current => current.filter(draft => draft.id !== id)), [])
 
   const addContext = useCallback((context: ChatCodeContext) => {
     setContexts(current => current.some(item => sameContext(item, context)) ? current : [...current, context])
@@ -120,7 +140,10 @@ export function useChatState(open: boolean, setOpen: (open: boolean) => void, au
     setSelectionState(null)
   }, [])
 
-  const controls = useMemo<ChatControls>(() => ({ open, setOpen, autoSelection, addContext, setSelection }), [open, setOpen, autoSelection, addContext, setSelection])
+  const controls = useMemo<ChatControls>(
+    () => ({ open, setOpen, autoSelection, addContext, setSelection, suggestionDrafts, openSuggestions, closeSuggestion }),
+    [open, setOpen, autoSelection, addContext, setSelection, suggestionDrafts, openSuggestions, closeSuggestion],
+  )
 
   useEffect(() => {
     if (!autoSelection)

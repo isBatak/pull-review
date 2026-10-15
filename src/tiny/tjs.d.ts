@@ -23,6 +23,7 @@ declare const tjs: {
   spawn: (args: string[], options?: { stdout?: TjsStdio, stderr?: TjsStdio, stdin?: TjsStdio, env?: Record<string, string> }) => TjsProcess
   stat: (path: string) => Promise<{ isFile?: boolean, isDirectory?: boolean }>
   writeFile: (path: string, data: Uint8Array) => Promise<void>
+  readFile: (path: string) => Promise<Uint8Array>
   makeDir: (path: string, options?: { recursive?: boolean }) => Promise<void>
   remove: (path: string, options?: { recursive?: boolean }) => Promise<void>
   readDir: (path: string) => Promise<AsyncIterable<TjsDirEntry>>

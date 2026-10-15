@@ -1,3 +1,6 @@
+import type { ReactElement, ReactNode } from 'react'
+import { createContext, use } from 'react'
+import type { Components } from 'react-markdown'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { css, cx } from 'styled-system/css'
@@ -23,13 +26,37 @@ const prose = css({
   '& input[type=checkbox]': { mr: '1.5' },
 })
 
-export function Markdown({ children, className, baseUrl }: { children: string, className?: string, baseUrl?: string }) {
+export type CodeBlockRenderer = (language: string | null, code: string) => ReactNode | null
+
+export const CodeBlockRendererContext = createContext<CodeBlockRenderer | null>(null)
+
+interface CodeElementProps {
+  className?: string
+  children?: ReactNode
+}
+
+function codeBlockOf(children: ReactNode) {
+  const element = children as ReactElement<CodeElementProps> | null
+  const language = /language-(\S+)/.exec(element?.props?.className ?? '')?.[1] ?? null
+  return { language, code: String(element?.props?.children ?? '') }
+}
+
+export function Markdown({ children, className, baseUrl, renderCodeBlock }: { children: string, className?: string, baseUrl?: string, renderCodeBlock?: CodeBlockRenderer }) {
+  const contextRenderer = use(CodeBlockRendererContext)
+  const codeBlockRenderer = renderCodeBlock ?? contextRenderer
+  const components: Components = { a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }
+  if (codeBlockRenderer) {
+    components.pre = ({ node: _node, children: preChildren, ...props }) => {
+      const { language, code } = codeBlockOf(preChildren)
+      return codeBlockRenderer(language, code) ?? <pre {...props}>{preChildren}</pre>
+    }
+  }
   return (
     <div className={cx(prose, className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         urlTransform={url => defaultUrlTransform(baseUrl && url.startsWith('/') ? `${baseUrl}${url}` : url)}
-        components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }}
+        components={components}
       >
         {children.replace(HTML_COMMENT, '')}
       </ReactMarkdown>

@@ -1,25 +1,33 @@
 import type { DiffLineAnnotation, FileDiffMetadata, FileDiffOptions, SelectedLineRange } from '@pierre/diffs/react'
-import type { ChatCodeContext } from '../../shared/chat'
+import type { ChatCodeContext, ChatThread } from '../../shared/chat'
 import type { DiffFile, DiffSide, Discussion } from '../../shared/types'
+import type { OpenSuggestion } from '../lib/chat'
+import type { DiffTextSelection } from '../lib/diff-selection'
 import type { ReviewStatus } from '../lib/preferences'
 import { parseDiffFromFile, processFile } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
 import { Fruncate } from '@pierre/truncate/react'
-import { ChevronDown, ChevronRight, Copy, ExternalLink, FileWarning, MessageSquare, Sparkles } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Code2, Copy, ExternalLink, FileWarning, MessageSquare, Sparkles } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css, cx } from 'styled-system/css'
-import { describeRange } from '../../shared/chat'
+import { describeRange, toChatThread } from '../../shared/chat'
 import { codeForRange, createLineMap } from '../../shared/line-map'
+import { parseSuggestionRange } from '../../shared/suggestions'
 import { isSearchableSymbol } from '../../shared/symbols'
 import { api } from '../lib/api'
 import { useChatControls } from '../lib/chat'
+import { readDiffTextSelection, sameTextSelection } from '../lib/diff-selection'
 import { GITHUB_THEMES } from '../lib/code-tokens'
 import { useOpenSymbol } from '../lib/symbols'
 import { directoryName, domIdForFile, fileName } from '../lib/format'
+import { useLocalRepo } from '../lib/local-repos'
+import { useSettings } from '../lib/settings'
 import { CommentComposer } from './comment-composer'
 import { ImageDiff, isImagePath } from './image-diff'
 import { useReview, useReviewActions } from './review-context'
+import { SuggestionBlock } from './suggestion-block'
 import { ThreadCard } from './thread-card'
+import { CodeBlockRendererContext } from './ui/markdown'
 import { Button, IconButton, WithTooltip } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { FileIcon } from './ui/file-icon'
@@ -32,6 +40,7 @@ interface DraftTarget {
 interface AnnotationData {
   discussions: Discussion[]
   hasDraft: boolean
+  suggestions: OpenSuggestion[]
 }
 
 export interface FileDiffCardProps {
@@ -111,7 +120,12 @@ function FileDiffCardImpl({
   const [loadError, setLoadError] = useState<string | null>(null)
   const chat = useChatControls()
   const openSymbol = useOpenSymbol()
-  const [selection, setSelection] = useState<SelectedLineRange | null>(null)
+  const [lineSelection, setLineSelection] = useState<SelectedLineRange | null>(null)
+  const [textSelection, setTextSelection] = useState<DiffTextSelection | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const localRepo = useLocalRepo(mergeRequest.ref)
+  const [settings] = useSettings()
+  const [editorError, setEditorError] = useState<string | null>(null)
 
   const lineMap = useMemo(() => createLineMap(file.diff), [file.diff])
   const oldPath = file.previousPath ?? file.path
@@ -152,13 +166,29 @@ function FileDiffCardImpl({
     }
   }
 
+  const allSuggestions = chat?.suggestionDrafts
+  const suggestions = useMemo(() => allSuggestions?.filter(suggestion => suggestion.path === file.path) ?? [], [allSuggestions, file.path])
+  const closeSuggestion = chat?.closeSuggestion
+  const sectionRef = useRef<HTMLElement>(null)
+  const firstSuggestionId = suggestions.find(suggestion => suggestion.first)?.id
+
+  useEffect(() => {
+    if (suggestions.length && collapsed)
+      onToggleCollapsed(file, false)
+  }, [suggestions.length, collapsed, onToggleCollapsed, file])
+
+  useEffect(() => {
+    if (firstSuggestionId)
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [firstSuggestionId])
+
   const annotations = useMemo(() => {
     const byLine = new Map<string, DiffLineAnnotation<AnnotationData>>()
     function entry(side: DiffSide, line: number) {
       const key = `${side}:${line}`
       let annotation = byLine.get(key)
       if (!annotation) {
-        annotation = { side, lineNumber: line, metadata: { discussions: [], hasDraft: false } }
+        annotation = { side, lineNumber: line, metadata: { discussions: [], hasDraft: false, suggestions: [] } }
         byLine.set(key, annotation)
       }
       return annotation
@@ -169,12 +199,19 @@ function FileDiffCardImpl({
     }
     if (draft)
       entry(draft.side, draft.line).metadata.hasDraft = true
+    for (const suggestion of suggestions)
+      entry('additions', suggestion.line).metadata.suggestions.push(suggestion)
     return [...byLine.values()]
-  }, [discussions, draft])
+  }, [discussions, draft, suggestions])
 
   const openDraft = useCallback((range: SelectedLineRange) => {
     const side = range.endSide ?? range.side ?? 'additions'
     setDraft({ side, line: Math.max(range.start, range.end) })
+  }, [])
+
+  const selectLines = useCallback((range: SelectedLineRange | null) => {
+    setLineSelection(range)
+    setTextSelection(null)
   }, [])
 
   const isOneSided = file.additions === 0 || file.deletions === 0
@@ -188,7 +225,7 @@ function FileDiffCardImpl({
     enableGutterUtility: true,
     enableLineSelection: true,
     onGutterUtilityClick: openDraft,
-    onLineSelected: chat ? setSelection : undefined,
+    onLineSelected: chat ? selectLines : undefined,
     onTokenEnter: openSymbol ? markSymbolToken : undefined,
     onTokenLeave: openSymbol ? unmarkSymbolToken : undefined,
     onTokenClick: openSymbol
@@ -199,49 +236,130 @@ function FileDiffCardImpl({
         }
       : undefined,
     loadDiffFiles: file.isBinary ? undefined : loadContents,
-  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, file.path, chat, openSymbol])
+  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, file.path, chat, selectLines, openSymbol])
 
   const renderAnnotation = useCallback((annotation: DiffLineAnnotation<AnnotationData>) => {
-    const { discussions: threads, hasDraft } = annotation.metadata
+    const { discussions: threads, hasDraft, suggestions: lineSuggestions } = annotation.metadata
+    function renderSuggestion(language: string | null, code: string) {
+      const range = parseSuggestionRange(language)
+      if (!range || annotation.side !== 'additions')
+        return null
+      const original = codeForRange(file.diff, 'additions', annotation.lineNumber - range.above, annotation.lineNumber + range.below)
+      return original === null ? null : <SuggestionBlock path={file.path} original={original} suggested={code} />
+    }
+    async function submitComment(body: string) {
+      const position = lineMap.resolve(annotation.side, annotation.lineNumber)
+      await create.mutateAsync({ body, comment: { oldPath, newPath: file.path, ...position } })
+    }
     return (
-      <div className={css({ display: 'flex', flexDir: 'column', gap: '2', p: '2', maxW: '3xl', fontSize: 'sm' })}>
-        {threads.map(discussion => <ThreadCard key={discussion.id} discussion={discussion} />)}
-        {hasDraft && (
-          <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
-            <CommentComposer
-              submitLabel="Comment"
-              autoFocus
-              baseUrl={projectUrl}
-              busy={create.isPending}
-              error={create.error?.message}
-              onCancel={() => setDraft(null)}
-              onSubmit={async (body) => {
-                const position = lineMap.resolve(annotation.side, annotation.lineNumber)
-                await create.mutateAsync({
-                  body,
-                  comment: { oldPath, newPath: file.path, ...position },
-                })
-                setDraft(null)
-              }}
-            />
-          </div>
-        )}
-      </div>
+      <CodeBlockRendererContext value={renderSuggestion}>
+        <div className={css({ display: 'flex', flexDir: 'column', gap: '2', p: '2', maxW: '3xl', fontSize: 'sm' })}>
+          {threads.map(discussion => (
+            <div key={discussion.id} data-discussion-id={discussion.id}>
+              <ThreadCard discussion={discussion} />
+            </div>
+          ))}
+          {hasDraft && (
+            <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
+              <CommentComposer
+                submitLabel="Comment"
+                autoFocus
+                baseUrl={projectUrl}
+                busy={create.isPending}
+                error={create.error?.message}
+                onCancel={() => setDraft(null)}
+                onSubmit={async (body) => {
+                  await submitComment(body)
+                  setDraft(null)
+                }}
+              />
+            </div>
+          )}
+          {lineSuggestions.map(suggestion => (
+            <div key={suggestion.id} className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
+              <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', mb: '2', fontSize: 'xs', color: 'accent.fg', '& svg': { w: '3.5', h: '3.5' } })}>
+                <Sparkles />
+                Suggestion from Claude. Edit it if needed, then click Comment to post it.
+              </div>
+              <CommentComposer
+                initialValue={suggestion.body}
+                submitLabel="Comment"
+                baseUrl={projectUrl}
+                busy={create.isPending}
+                error={create.error?.message}
+                onCancel={() => closeSuggestion?.(suggestion.id)}
+                onSubmit={async (body) => {
+                  await submitComment(body)
+                  closeSuggestion?.(suggestion.id)
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </CodeBlockRendererContext>
     )
-  }, [create, file.path, lineMap, oldPath, projectUrl])
+  }, [create, file.path, file.diff, lineMap, oldPath, projectUrl, closeSuggestion])
+
+  useEffect(() => {
+    if (!chat || collapsed)
+      return
+    let frame = 0
+    function update() {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const container = bodyRef.current
+        if (!container)
+          return
+        const result = readDiffTextSelection(container)
+        if (result === 'outside')
+          return
+        const next = result === 'cleared' ? null : result
+        setTextSelection(current => sameTextSelection(current, next) ? current : next)
+      })
+    }
+    document.addEventListener('selectionchange', update)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('selectionchange', update)
+    }
+  }, [chat, collapsed])
 
   const selectedRange = useMemo(() => {
-    if (!selection)
+    if (textSelection) {
+      if (textSelection.startLine !== null && textSelection.endLine !== null)
+        return { side: textSelection.side, startLine: textSelection.startLine, endLine: textSelection.endLine }
+      const positions = discussions.filter(discussion => textSelection.discussionIds.includes(discussion.id)).flatMap(discussion => discussion.position ? [discussion.position] : [])
+      const first = positions[0]
+      if (!first)
+        return null
+      const lines = positions.filter(position => position.side === first.side).map(position => position.line)
+      return { side: first.side, startLine: Math.min(...lines), endLine: Math.max(...lines) }
+    }
+    if (!lineSelection)
       return null
-    const side = selection.endSide ?? selection.side ?? 'additions'
-    return { side, startLine: Math.min(selection.start, selection.end), endLine: Math.max(selection.start, selection.end) }
-  }, [selection])
+    const side = lineSelection.endSide ?? lineSelection.side ?? 'additions'
+    return { side, startLine: Math.min(lineSelection.start, lineSelection.end), endLine: Math.max(lineSelection.start, lineSelection.end) }
+  }, [textSelection, lineSelection, discussions])
+
+  const selectedThreads = useMemo<ChatThread[]>(() => {
+    if (!selectedRange)
+      return []
+    const pickedIds = new Set(textSelection?.discussionIds)
+    return discussions
+      .filter(discussion => pickedIds.has(discussion.id) || (
+        discussion.position?.side === selectedRange.side
+        && discussion.position.line >= selectedRange.startLine
+        && discussion.position.line <= selectedRange.endLine
+      ))
+      .flatMap(discussion => toChatThread(discussion) ?? [])
+  }, [selectedRange, textSelection, discussions])
 
   const selectionContext = useMemo<ChatCodeContext | null>(() => selectedRange && {
     ...selectedRange,
     path: selectedRange.side === 'deletions' ? oldPath : file.path,
     code: codeForRange(file.diff, selectedRange.side, selectedRange.startLine, selectedRange.endLine),
-  }, [selectedRange, oldPath, file.path, file.diff])
+    threads: selectedThreads,
+  }, [selectedRange, selectedThreads, oldPath, file.path, file.diff])
 
   const chatOpen = chat?.open ?? false
   const autoSelection = chatOpen && (chat?.autoSelection ?? false)
@@ -252,7 +370,27 @@ function FileDiffCardImpl({
   }, [autoSelection, setChatSelection, file.id, selectionContext])
 
   function askClaude() {
-    chat?.addContext(selectionContext ?? { path: file.path, side: 'additions', startLine: null, endLine: null, code: null })
+    chat?.addContext(selectionContext ?? {
+      path: file.path,
+      side: 'additions',
+      startLine: null,
+      endLine: null,
+      code: null,
+      threads: discussions.flatMap(discussion => toChatThread(discussion) ?? []),
+    })
+  }
+
+  const editorLine = selectedRange?.side === 'additions' ? selectedRange.startLine : 1
+  async function openInEditor() {
+    if (!localRepo.path)
+      return
+    setEditorError(null)
+    try {
+      await api.openInEditor({ repoPath: localRepo.path, path: file.path, line: editorLine, column: 1, editor: settings.editor })
+    }
+    catch (error) {
+      setEditorError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   const resolvedCount = discussions.filter(discussion => discussion.resolved).length
@@ -260,7 +398,7 @@ function FileDiffCardImpl({
   const statusStyle = STATUS_STYLES[file.status]
 
   return (
-    <section id={domIdForFile(file.id)} className={css({ scrollMarginTop: '2' })}>
+    <section ref={sectionRef} id={domIdForFile(file.id)} className={css({ scrollMarginTop: '2' })}>
       <header
         onClick={() => onToggleCollapsed(file, !collapsed)}
         className={css({
@@ -336,6 +474,13 @@ function FileDiffCardImpl({
           <span className={cx(css({ fontSize: '2xs', fontWeight: 'semibold', textTransform: 'uppercase', letterSpacing: 'wide' }), css({ color: statusStyle.tone }))}>
             {statusStyle.label}
           </span>
+          {localRepo.path && file.status !== 'removed' && (
+            <span onClick={event => event.stopPropagation()} className={css({ display: 'inline-flex' })}>
+              <IconButton size="xs" label={`Open in editor at line ${editorLine}`} onClick={() => void openInEditor()}>
+                <Code2 />
+              </IconButton>
+            </span>
+          )}
           <a
             href={`${mergeRequest.webUrl}/diffs#${file.path}`}
             target="_blank"
@@ -367,18 +512,26 @@ function FileDiffCardImpl({
               {loadError && <span className={css({ color: 'danger.fg' })}>{loadError}</span>}
             </div>
           )}
+          {editorError && (
+            <div className={css({ display: 'flex', alignItems: 'center', gap: '2', px: '3', py: '1.5', fontSize: 'xs', bg: 'danger.subtle', color: 'danger.fg' })}>
+              {editorError}
+              <Button size="xs" variant="ghost" className={css({ ml: 'auto' })} onClick={() => setEditorError(null)}>Dismiss</Button>
+            </div>
+          )}
           {fileDiff && (
-            <FileDiff
-              fileDiff={fileDiff}
-              options={options}
-              lineAnnotations={annotations}
-              renderAnnotation={renderAnnotation}
-              style={{
-                '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
-                '--diffs-font-size': '12px',
-                '--diffs-line-height': '20px',
-              } as React.CSSProperties}
-            />
+            <div ref={bodyRef}>
+              <FileDiff
+                fileDiff={fileDiff}
+                options={options}
+                lineAnnotations={annotations}
+                renderAnnotation={renderAnnotation}
+                style={{
+                  '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
+                  '--diffs-font-size': '12px',
+                  '--diffs-line-height': '20px',
+                } as React.CSSProperties}
+              />
+            </div>
           )}
         </div>
       )}

@@ -98,6 +98,14 @@ export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string
     },
 
     writeFile: (path, text) => tjs.writeFile(path, encoder.encode(text)),
+    readFile: async (path) => {
+      try {
+        return new TextDecoder().decode(await tjs.readFile(path))
+      }
+      catch {
+        return null
+      }
+    },
     makeDir: path => tjs.makeDir(path, { recursive: true }).catch(() => undefined),
     remove: async (path) => {
       if (await exists(path))

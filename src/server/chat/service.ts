@@ -1,11 +1,17 @@
-import type { ChatMessage, ChatSendInput, ChatState, ChatWorkspace } from '../../shared/chat'
-import type { DiffFile, MergeRequest, MrRef } from '../../shared/types'
+import type { ChatMessage, ChatPromptSection, ChatPromptView, ChatSendInput, ChatState, ChatWorkspace } from '../../shared/chat'
+import type { DiffFile, Discussion, MergeRequest, MrRef } from '../../shared/types'
+import type { CommitPlan, CommitPlanInput } from '../../shared/commit-plan'
 import type { LocalHost, StreamedProcess } from '../local/host'
-import { buildMrSummary, buildPatch, buildPrompt, buildSystemPrompt, EMPTY_CHAT_STATE } from '../../shared/chat'
+import type { SavedChat, SentPrompt } from './saved-chat'
+import { buildContextUpdateNote, buildDiscussionsSummary, buildMrSummary, buildPatch, buildPrompt, buildSystemPrompt, chatModelArgs, EMPTY_CHAT_STATE, fileDiffName } from '../../shared/chat'
 import { mrKey } from '../../shared/mr-ref'
 import { applyStreamLine, explainExit } from './claude-events'
 import { findExecutable } from '../local/host'
 import { expandHome } from '../local/git'
+import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan } from '../../shared/commit-plan'
+import { readLocalChanges } from '../local/changes'
+import { createGitTools } from '../local/git'
+import { MAX_SENT_PROMPTS, packSent, rememberSent, unpackSent } from './saved-chat'
 import { createWorkspaces } from './workspace'
 
 const IDLE_LIMIT_MS = 30 * 60_000
@@ -13,6 +19,10 @@ const IDLE_CHECK_MS = 60_000
 const MAX_WAIT_MS = 20_000
 const READ_ONLY_TOOLS = 'Read,Grep,Glob'
 const REMOVED_ENV = ['ANTHROPIC_API_KEY', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
+const MAX_PREVIEW_CHARS = 200_000
+const MAX_PLAN_DIFF_CHARS = 150_000
+const MAX_PLAN_FILE_DIFF_CHARS = 20_000
+const CHAT_RETENTION_MS = 30 * 24 * 60 * 60_000
 
 export class ChatError extends Error {
   constructor(public status: number, message: string) {
@@ -23,6 +33,22 @@ export class ChatError extends Error {
 export interface MrSnapshot {
   mergeRequest: MergeRequest
   files: DiffFile[]
+  discussions: Discussion[]
+}
+
+interface ContextFile {
+  name: string
+  path: string
+  text: string
+}
+
+function hashText(text: string) {
+  let hash = 0x811C9DC5
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `${(hash >>> 0).toString(36)}:${text.length}`
 }
 
 interface Session {
@@ -36,16 +62,23 @@ interface Session {
   workspaceTask: Promise<void> | null
   turn: StreamedProcess | null
   turnCount: number
+  sent: Map<string, SentPrompt>
+  written: Map<string, string>
+  seenContext: Record<string, string>
   lastUsed: number
   waiters: Set<() => void>
+  saving: Promise<void>
 }
 
 export interface ChatService {
   available: () => Promise<boolean>
   state: (ref: MrRef, since: number, waitMs: number) => Promise<ChatState>
   prepare: (ref: MrRef, load: () => Promise<MrSnapshot>, repoPath: string | null) => Promise<ChatState>
-  send: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ChatSendInput) => ChatState
-  stop: (ref: MrRef) => ChatState
+  send: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ChatSendInput) => Promise<ChatState>
+  preview: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ChatSendInput) => Promise<ChatPromptView>
+  sentPrompt: (ref: MrRef, messageId: string) => Promise<ChatPromptView>
+  stop: (ref: MrRef) => Promise<ChatState>
+  planCommits: (ref: MrRef, input: CommitPlanInput & { title: string, branch: string }) => Promise<CommitPlan>
   reset: (ref: MrRef) => Promise<ChatState>
   dispose: () => Promise<void>
 }
@@ -64,6 +97,7 @@ export function createChatService(host: LocalHost): ChatService {
   const claudePath = findExecutable(host, 'claude', [`${host.homeDir}/.local/bin`, `${host.homeDir}/.claude/local`])
 
   void workspaces.sweepStale()
+  void sweepOldChats()
 
   function snapshot(session: Session | undefined): ChatState {
     if (!session)
@@ -84,40 +118,151 @@ export function createChatService(host: LocalHost): ChatService {
       resolve()
   }
 
-  function sessionFor(ref: MrRef) {
+  const loading = new Map<string, Promise<Session>>()
+
+  function savedChatFile(ref: MrRef) {
+    return `${workspaces.chatDir(ref)}/chat.json`
+  }
+
+  async function readSavedChat(path: string): Promise<SavedChat | null> {
+    const text = await host.readFile(path)
+    if (!text)
+      return null
+    try {
+      return JSON.parse(text) as SavedChat
+    }
+    catch {
+      return null
+    }
+  }
+
+  async function createSession(ref: MrRef): Promise<Session> {
+    const saved = await readSavedChat(savedChatFile(ref))
+    return {
+      ref,
+      claudeSessionId: saved?.claudeSessionId ?? createId(),
+      started: saved?.started ?? false,
+      messages: (saved?.messages ?? []).map(message => message.status === 'streaming' ? { ...message, status: 'stopped' } : message),
+      // Starts from the clock so a browser that saw the previous server's versions still accepts this one.
+      version: Date.now(),
+      workspace: { kind: 'diff-only' },
+      worktreeDir: null,
+      workspaceTask: null,
+      turn: null,
+      turnCount: saved?.turnCount ?? 0,
+      sent: unpackSent(saved),
+      written: new Map(),
+      seenContext: saved?.seenContext ?? {},
+      lastUsed: Date.now(),
+      waiters: new Set(),
+      saving: Promise.resolve(),
+    }
+  }
+
+  async function sessionFor(ref: MrRef) {
     const key = mrKey(ref)
     let session = sessions.get(key)
     if (!session) {
-      session = {
-        ref,
-        claudeSessionId: createId(),
-        started: false,
-        messages: [],
-        version: 1,
-        workspace: { kind: 'diff-only' },
-        worktreeDir: null,
-        workspaceTask: null,
-        turn: null,
-        turnCount: 0,
-        lastUsed: Date.now(),
-        waiters: new Set(),
+      let pending = loading.get(key)
+      if (!pending) {
+        pending = createSession(ref).then((created) => {
+          sessions.set(key, created)
+          return created
+        }).finally(() => loading.delete(key))
+        loading.set(key, pending)
       }
-      sessions.set(key, session)
+      session = await pending
     }
     session.lastUsed = Date.now()
     return session
   }
 
-  function claudeProjectDir(ref: MrRef) {
-    return `${host.homeDir}/.claude/projects/${workspaces.contextDir(ref).replace(/[^a-z0-9]/gi, '-')}`
+  function persist(session: Session) {
+    const saved: SavedChat = {
+      claudeSessionId: session.claudeSessionId,
+      started: session.started,
+      turnCount: session.turnCount,
+      messages: session.messages,
+      ...packSent(session.sent),
+      seenContext: session.seenContext,
+      updatedAt: Date.now(),
+    }
+    const text = JSON.stringify(saved)
+    session.saving = session.saving
+      .then(async () => {
+        await host.makeDir(workspaces.chatDir(session.ref))
+        await host.writeFile(savedChatFile(session.ref), text)
+      })
+      .catch(() => undefined)
+    return session.saving
   }
 
-  async function writeContext(ref: MrRef, mr: MrSnapshot) {
-    const dir = workspaces.contextDir(ref)
-    await host.makeDir(dir)
-    await host.writeFile(`${dir}/merge-request.md`, buildMrSummary(mr.mergeRequest, mr.files))
-    await host.writeFile(`${dir}/changes.diff`, buildPatch(mr.files))
-    return dir
+  function claudeProjectDirFor(contextDir: string) {
+    return `${host.homeDir}/.claude/projects/${contextDir.replace(/[^a-z0-9]/gi, '-')}`
+  }
+
+  function claudeProjectDir(ref: MrRef) {
+    return claudeProjectDirFor(workspaces.contextDir(ref))
+  }
+
+  async function sweepOldChats() {
+    const cutoff = Date.now() - CHAT_RETENTION_MS
+    for (const name of await host.listDir(workspaces.chatsRoot)) {
+      const dir = `${workspaces.chatsRoot}/${name}`
+      const saved = await readSavedChat(`${dir}/chat.json`)
+      if (saved && saved.updatedAt >= cutoff)
+        continue
+      await host.remove(claudeProjectDirFor(`${dir}/context`)).catch(() => null)
+      await host.remove(dir).catch(() => null)
+    }
+  }
+
+  async function writeContext(session: Session, mr: MrSnapshot) {
+    const dir = workspaces.contextDir(session.ref)
+    const named = [
+      { name: 'merge-request.md', text: buildMrSummary(mr.mergeRequest, mr.files) },
+      { name: 'changes.diff', text: buildPatch(mr.files) },
+      { name: 'discussions.md', text: buildDiscussionsSummary(mr.discussions) },
+      ...mr.files.filter(file => file.diff).map(file => ({ name: fileDiffName(file.path), text: buildPatch([file]) })),
+    ]
+    const files: ContextFile[] = named.map(file => ({ ...file, path: `${dir}/${file.name}` }))
+    for (const file of files) {
+      const hash = hashText(file.text)
+      if (session.written.get(file.path) === hash)
+        continue
+      await host.makeDir(file.path.slice(0, file.path.lastIndexOf('/')))
+      await host.writeFile(file.path, file.text)
+      session.written.set(file.path, hash)
+    }
+    return { dir, files }
+  }
+
+  function contextUpdate(session: Session, files: ContextFile[]) {
+    const seen = Object.fromEntries(files.map(file => [file.name, hashText(file.text)]))
+    const known = session.started && Object.keys(session.seenContext).length > 0
+    const changed = known ? files.map(file => file.name).filter(name => session.seenContext[name] !== seen[name]) : []
+    return { seen, note: buildContextUpdateNote(changed) }
+  }
+
+  function withUpdateNote(note: string | null, prompt: string) {
+    return note ? `${note}\n\n${prompt}` : prompt
+  }
+
+  function promptSections(prompt: SentPrompt): ChatPromptSection[] {
+    return [
+      { label: 'Your message', detail: 'Your text and everything you attached', text: prompt.message },
+      { label: 'System prompt', detail: 'Instructions Pull Review adds to every message', text: prompt.systemPrompt },
+    ]
+  }
+
+  function fileSection(file: ContextFile): ChatPromptSection {
+    const truncated = file.text.length > MAX_PREVIEW_CHARS
+    const size = `${Math.ceil(file.text.length / 1024)} KB`
+    return {
+      label: file.path.slice(file.path.lastIndexOf('/') + 1),
+      detail: truncated ? `${file.path}, ${size}, showing the first ${MAX_PREVIEW_CHARS / 1000}K characters` : `${file.path}, ${size}`,
+      text: truncated ? file.text.slice(0, MAX_PREVIEW_CHARS) : file.text,
+    }
   }
 
   function ensureWorkspace(session: Session, rawRepoPath: string | null, headSha: string): Promise<void> {
@@ -165,26 +310,32 @@ export function createChatService(host: LocalHost): ChatService {
     return env
   }
 
-  async function runTurn(session: Session, reply: ChatMessage, load: () => Promise<MrSnapshot>, input: ChatSendInput) {
+  async function runTurn(session: Session, question: ChatMessage, reply: ChatMessage, load: () => Promise<MrSnapshot>, input: ChatSendInput) {
     const fail = (message: string) => {
       reply.status = 'error'
       reply.error = message
       session.turn = null
       changed(session)
     }
+    let promptFile: string | null = null
     try {
       const binary = await claudePath
       if (!binary)
         return fail('Claude Code is not installed.')
       const mr = await load()
-      const contextDir = await writeContext(session.ref, mr)
+      const { dir: contextDir, files } = await writeContext(session, mr)
       await ensureWorkspace(session, input.repoPath, mr.mergeRequest.diffRefs.headSha)
       if (reply.status !== 'streaming')
         return
 
       const worktreeDir = session.workspace.kind === 'ready' ? session.worktreeDir : null
-      const promptFile = `${contextDir}/prompt-${++session.turnCount}.txt`
-      await host.writeFile(promptFile, buildPrompt(input.text, input.contexts))
+      promptFile = `${contextDir}/prompt-${++session.turnCount}.txt`
+      const update = contextUpdate(session, files)
+      session.seenContext = update.seen
+      const message = withUpdateNote(update.note, buildPrompt(input.text, input.contexts))
+      const systemPrompt = buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir })
+      await host.writeFile(promptFile, message)
+      rememberSent(session.sent, question.id, { message, systemPrompt, files: [...files.filter(file => !file.name.startsWith('diffs/')).map(file => file.path), `${contextDir}/diffs/ (one diff per changed file)`, ...(worktreeDir ? [worktreeDir] : [])] })
 
       const args = [
         binary,
@@ -200,8 +351,9 @@ export function createChatService(host: LocalHost): ChatService {
         '--setting-sources',
         '',
         '--strict-mcp-config',
+        ...chatModelArgs(input.model, input.effort),
         '--append-system-prompt',
-        buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }),
+        systemPrompt,
         ...(worktreeDir ? ['--add-dir', worktreeDir] : []),
         ...(session.started ? ['--resume', session.claudeSessionId] : ['--session-id', session.claudeSessionId]),
       ]
@@ -236,15 +388,23 @@ export function createChatService(host: LocalHost): ChatService {
     catch (error) {
       fail(errorMessage(error))
     }
+    finally {
+      if (promptFile)
+        await host.remove(promptFile).catch(() => null)
+      await persist(session)
+    }
   }
 
   async function disposeSession(session: Session) {
     session.turn?.kill()
+    for (const message of session.messages) {
+      if (message.status === 'streaming')
+        message.status = 'stopped'
+    }
     sessions.delete(mrKey(session.ref))
+    await persist(session)
     if (session.worktreeDir)
       await workspaces.removeWorktree(session.worktreeDir).catch(() => null)
-    await host.remove(workspaces.contextDir(session.ref)).catch(() => null)
-    await host.remove(claudeProjectDir(session.ref)).catch(() => null)
   }
 
   const idleTimer = setInterval(() => {
@@ -260,7 +420,7 @@ export function createChatService(host: LocalHost): ChatService {
     available: async () => Boolean(await claudePath),
 
     async state(ref, since, waitMs) {
-      const session = sessionFor(ref)
+      const session = await sessionFor(ref)
       if (session.version <= since) {
         await new Promise<void>((resolve) => {
           session.waiters.add(resolve)
@@ -271,7 +431,7 @@ export function createChatService(host: LocalHost): ChatService {
     },
 
     async prepare(ref, load, repoPath) {
-      const session = sessionFor(ref)
+      const session = await sessionFor(ref)
       if (repoPath?.trim()) {
         const mr = await load()
         void ensureWorkspace(session, repoPath, mr.mergeRequest.diffRefs.headSha)
@@ -282,44 +442,135 @@ export function createChatService(host: LocalHost): ChatService {
       return snapshot(session)
     },
 
-    send(ref, load, input) {
+    async send(ref, load, input) {
       if (!input.text.trim())
         throw new ChatError(400, 'The message is empty.')
-      const session = sessionFor(ref)
+      const session = await sessionFor(ref)
       if (session.turn || session.messages.some(message => message.status === 'streaming'))
         throw new ChatError(409, 'Claude is still answering. Wait for it to finish or stop it.')
-      session.messages.push({ id: createId(), role: 'user', text: input.text.trim(), contexts: input.contexts, tools: [], status: 'done', error: null })
+      const question: ChatMessage = { id: createId(), role: 'user', text: input.text.trim(), contexts: input.contexts, tools: [], status: 'done', error: null }
+      session.messages.push(question)
       const reply: ChatMessage = { id: createId(), role: 'assistant', text: '', contexts: [], tools: [], status: 'streaming', error: null }
       session.messages.push(reply)
       changed(session)
-      void runTurn(session, reply, load, input)
+      void persist(session)
+      void runTurn(session, question, reply, load, input)
       return snapshot(session)
     },
 
-    stop(ref) {
-      const session = sessions.get(mrKey(ref))
-      if (!session)
-        return EMPTY_CHAT_STATE
+    async preview(ref, load, input) {
+      const session = await sessionFor(ref)
+      const mr = await load()
+      const { dir: contextDir, files } = await writeContext(session, mr)
+      const worktreeDir = session.workspace.kind === 'ready' ? session.worktreeDir : null
+      const fileDiffs = files.filter(file => file.name.startsWith('diffs/'))
+      const prompt = {
+        message: withUpdateNote(contextUpdate(session, files).note, buildPrompt(input.text, input.contexts)),
+        systemPrompt: buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }),
+        files: [],
+      }
+      const fileDiffList: ChatPromptSection = {
+        label: 'diffs/',
+        detail: `${contextDir}/diffs, one diff per changed file`,
+        text: fileDiffs.map(file => file.name.slice('diffs/'.length)).join('\n'),
+      }
+      return { sections: [...promptSections(prompt), ...files.filter(file => !fileDiffs.includes(file)).map(fileSection), fileDiffList] }
+    },
+
+    async sentPrompt(ref, messageId) {
+      const prompt = (await sessionFor(ref)).sent.get(messageId)
+      if (!prompt)
+        throw new ChatError(404, `Pull Review keeps what was sent only for the last ${MAX_SENT_PROMPTS} questions in a chat.`)
+      return {
+        sections: [
+          ...promptSections(prompt),
+          { label: 'Files Claude could read', detail: 'They are rewritten on each message, so they now hold the latest version', text: prompt.files.join('\n') },
+        ],
+      }
+    },
+
+    async planCommits(ref, input) {
+      const binary = await claudePath
+      if (!binary)
+        throw new ChatError(404, 'Claude Code is not installed.')
+      const gitTools = createGitTools(host)
+      const changes = await readLocalChanges(gitTools, ref, input.repoPath)
+      if (!changes.files.length)
+        throw new ChatError(400, 'There are no local changes to commit.')
+      const recent = await gitTools.git(['log', '--max-count=20', '--format=%s'], changes.path)
+      let budget = MAX_PLAN_DIFF_CHARS
+      const files = changes.files.map((file) => {
+        const diff = file.diff.slice(0, Math.max(0, Math.min(MAX_PLAN_FILE_DIFF_CHARS, budget)))
+        budget -= diff.length
+        return { path: file.path, status: file.status, diff }
+      })
+      const dir = `${host.cacheDir}/commit-plans`
+      await host.makeDir(dir)
+      const promptFile = `${dir}/${createId()}.txt`
+      await host.writeFile(promptFile, buildCommitPlanPrompt({ title: input.title, branch: input.branch, recentSubjects: recent.stdout.split('\n').filter(Boolean), files }))
+      const lines: string[] = []
+      try {
+        const process = host.stream([
+          binary,
+          '-p',
+          '--output-format',
+          'json',
+          '--tools',
+          '',
+          '--setting-sources',
+          '',
+          '--strict-mcp-config',
+          '--no-session-persistence',
+          '--append-system-prompt',
+          COMMIT_PLAN_SYSTEM_PROMPT,
+          '--json-schema',
+          JSON.stringify(COMMIT_PLAN_SCHEMA),
+          ...chatModelArgs(input.model, input.effort),
+        ], { cwd: dir, stdinFile: promptFile, env: await claudeEnv(), onLine: line => lines.push(line) })
+        const { code, stderr } = await process.exited
+        const output = lines.map((line) => {
+          try {
+            return JSON.parse(line) as unknown
+          }
+          catch {
+            return null
+          }
+        }).findLast(value => value !== null)
+        const plan = readCommitPlan(output)
+        if (!plan)
+          throw new ChatError(502, code === 0 ? 'Claude did not return a commit plan. Try again, or write the commits yourself.' : explainExit(code, stderr))
+        return normalizeCommitPlan(plan, changes.files.map(file => file.path))
+      }
+      finally {
+        await host.remove(promptFile).catch(() => null)
+      }
+    },
+
+    async stop(ref) {
+      const session = await sessionFor(ref)
       for (const message of session.messages) {
         if (message.status === 'streaming')
           message.status = 'stopped'
       }
       session.turn?.kill()
       changed(session)
+      void persist(session)
       return snapshot(session)
     },
 
     async reset(ref) {
-      const session = sessions.get(mrKey(ref))
-      if (!session)
-        return EMPTY_CHAT_STATE
+      const session = await sessionFor(ref)
       session.turn?.kill()
       session.turn = null
       await host.remove(claudeProjectDir(ref)).catch(() => null)
       session.claudeSessionId = createId()
       session.started = false
       session.messages = []
+      session.sent.clear()
+      session.seenContext = {}
+      session.turnCount = 0
       changed(session)
+      await persist(session)
       return snapshot(session)
     },
 

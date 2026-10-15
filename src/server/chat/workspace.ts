@@ -6,6 +6,8 @@ const CHECKOUT_TIMEOUT_MS = 10 * 60_000
 
 export interface Workspaces {
   rootFor: (pid: number) => string
+  chatsRoot: string
+  chatDir: (ref: MrRef) => string
   contextDir: (ref: MrRef) => string
   worktreeDir: (ref: MrRef) => string
   prepare: (ref: MrRef, repoPath: string, headSha: string) => Promise<string>
@@ -40,7 +42,9 @@ export function createWorkspaces(host: LocalHost): Workspaces {
 
   return {
     rootFor: root,
-    contextDir: ref => `${root(host.pid)}/context/${slugFor(ref)}`,
+    chatsRoot: `${host.cacheDir}/chats`,
+    chatDir: ref => `${host.cacheDir}/chats/${slugFor(ref)}`,
+    contextDir: ref => `${host.cacheDir}/chats/${slugFor(ref)}/context`,
     worktreeDir: ref => `${root(host.pid)}/worktrees/${slugFor(ref)}`,
 
     async prepare(ref, rawRepoPath, headSha) {

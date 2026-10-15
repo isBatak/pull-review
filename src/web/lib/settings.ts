@@ -27,6 +27,10 @@ export interface AppSettings {
   bundle: BundleSettings
   localRepos: Record<string, string>
   chatSelection: ChatSelectionMode
+  chatModel: string
+  chatEffort: string
+  commitModel: string
+  commitEffort: string
   editor: string
 }
 
@@ -48,6 +52,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   bundle: DEFAULT_BUNDLE_SETTINGS,
   localRepos: {},
   chatSelection: 'automatic',
+  chatModel: '',
+  chatEffort: '',
+  commitModel: 'haiku',
+  commitEffort: 'low',
   editor: 'auto',
 }
 

@@ -1,7 +1,7 @@
 import type { LocalHost } from './host'
 import { execFile, spawn } from 'node:child_process'
 import { closeSync, constants, openSync } from 'node:fs'
-import { access, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import process from 'node:process'
 import { createInterface } from 'node:readline'
@@ -53,6 +53,7 @@ export function createNodeLocalHost(): LocalHost {
     },
 
     writeFile: (path, text) => writeFile(path, text),
+    readFile: path => readFile(path, 'utf8').catch(() => null),
     makeDir: path => mkdir(path, { recursive: true }).then(() => undefined),
     remove: path => rm(path, { recursive: true, force: true }),
     listDir: path => readdir(path).catch(() => []),

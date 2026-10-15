@@ -1,5 +1,6 @@
 import type { CategoryConfig } from '../../shared/grouping'
 import type { AppSettings, Team } from './settings'
+import { CHAT_EFFORTS, CHAT_MODELS } from '../../shared/chat'
 import { DEFAULT_BUNDLE_SETTINGS, DEFAULT_SETTINGS, TEAM_COLORS } from './settings'
 
 export const BACKUP_FORMAT = 'pull-review-settings'
@@ -114,6 +115,14 @@ export function parseBackup(text: string): ParsedBackup {
 
   if (raw.chatSelection === 'automatic' || raw.chatSelection === 'manual')
     settings.chatSelection = raw.chatSelection
+  if (CHAT_MODELS.some(option => option.id === raw.chatModel))
+    settings.chatModel = raw.chatModel as string
+  if (CHAT_EFFORTS.some(option => option.id === raw.chatEffort))
+    settings.chatEffort = raw.chatEffort as string
+  if (CHAT_MODELS.some(option => option.id === raw.commitModel))
+    settings.commitModel = raw.commitModel as string
+  if (CHAT_EFFORTS.some(option => option.id === raw.commitEffort))
+    settings.commitEffort = raw.commitEffort as string
 
   if (isRecord(raw.localRepos)) {
     settings.localRepos = Object.fromEntries(

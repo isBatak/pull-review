@@ -1,16 +1,27 @@
 import type { ChatCodeContext, ChatMessage, ChatWorkspace } from '../../../shared/chat'
+import type { PromptViewerRequest } from './prompt-viewer'
 import type { MrRef } from '../../../shared/types'
-import { ArrowUp, FileCode2, FolderGit2, Loader2, RotateCcw, Sparkles, Square, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { css } from 'styled-system/css'
-import { describeRange } from '../../../shared/chat'
+import { ArrowUp, Check, ClipboardCopy, Eye, FileCode2, FolderGit2, GitPullRequestArrow, Loader2, MessageSquare, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
+import { css, cx } from 'styled-system/css'
+import { buildContextText, describeRange, isPatch } from '../../../shared/chat'
 import { api } from '../../lib/api'
+import { createLineMap } from '../../../shared/line-map'
+import { parseUnifiedPatch, planSuggestions } from '../../../shared/suggestions'
 import { useChatControls, useChatDraft, useChatSession } from '../../lib/chat'
-import { useLocalRepo } from '../../lib/local-repos'
+import { localChangesKey, useLocalRepo } from '../../lib/local-repos'
+import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../../lib/model-options'
+import { useSettings } from '../../lib/settings'
 import { fileName } from '../../lib/format'
 import { LinkRepoForm } from '../link-repo-form'
+import { useReview } from '../review-context'
 import { Button, IconButton } from '../ui/button'
 import { Markdown } from '../ui/markdown'
+import { Select } from '../ui/select'
+import { parsePatch, PatchView } from './patch-view'
+import { PromptViewer } from './prompt-viewer'
 
 const SUGGESTIONS = [
   'Summarize this merge request',
@@ -21,10 +32,31 @@ const SUGGESTIONS = [
 
 const spinner = css({ animation: 'spin', flexShrink: 0 })
 
-function ContextChip({ context, live, onRemove }: { context: ChatCodeContext, live?: boolean, onRemove?: () => void }) {
+function describeThreads(count: number) {
+  return count === 1 ? '1 review thread' : `${count} review threads`
+}
+
+function contextRequest(context: ChatCodeContext): PromptViewerRequest {
+  return {
+    title: `${fileName(context.path)}, ${describeRange(context)}`,
+    description: 'This is the exact text this attachment adds to your message.',
+    load: async () => ({ sections: [{ label: 'Added to your message', detail: context.path, text: buildContextText(context) }] }),
+  }
+}
+
+interface ContextChipProps {
+  context: ChatCodeContext
+  live?: boolean
+  onOpen: (request: PromptViewerRequest) => void
+  onRemove?: () => void
+}
+
+function ContextChip({ context, live, onOpen, onRemove }: ContextChipProps) {
+  const threadCount = context.threads.length
+  const summary = `${context.path}, ${describeRange(context)}${threadCount ? `, with ${describeThreads(threadCount)}` : ''}`
   return (
     <span
-      title={live ? `Selected in the diff: ${context.path}, ${describeRange(context)}` : `${context.path}, ${describeRange(context)}`}
+      title={`${live ? `Selected in the diff: ${summary}` : summary}. Click to see what is sent.`}
       className={css({
         display: 'inline-flex',
         alignItems: 'center',
@@ -40,12 +72,24 @@ function ContextChip({ context, live, onRemove }: { context: ChatCodeContext, li
         borderStyle: 'dashed',
         borderColor: live ? 'accent.default' : 'transparent',
         borderRadius: 'md',
-        '& > svg': { w: '3.5', h: '3.5', flexShrink: 0 },
       })}
     >
-      <FileCode2 />
-      <span className={css({ truncate: true, fontFamily: 'mono' })}>{fileName(context.path)}</span>
-      <span className={css({ flexShrink: 0, color: 'fg.subtle' })}>{describeRange(context)}</span>
+      <button
+        type="button"
+        aria-label={`Show what ${fileName(context.path)}, ${describeRange(context)} adds to the message`}
+        onClick={() => onOpen(contextRequest(context))}
+        className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', minW: '0', cursor: 'pointer', _hover: { color: 'fg.default', '& .range': { textDecoration: 'underline' } }, '& > svg': { w: '3.5', h: '3.5', flexShrink: 0 } })}
+      >
+        <FileCode2 />
+        <span className={css({ truncate: true, fontFamily: 'mono' })}>{fileName(context.path)}</span>
+        <span className={`range ${css({ flexShrink: 0, color: 'fg.subtle' })}`}>{describeRange(context)}</span>
+        {threadCount > 0 && (
+          <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '0.5', flexShrink: 0, '& svg': { w: '3', h: '3' } })}>
+            <MessageSquare />
+            {threadCount}
+          </span>
+        )}
+      </button>
       {onRemove && (
         <button
           type="button"
@@ -116,18 +160,166 @@ function ToolLine({ message }: { message: ChatMessage }) {
   )
 }
 
-function MessageView({ message, baseUrl }: { message: ChatMessage, baseUrl: string }) {
+type SuggestState = { kind: 'idle' } | { kind: 'working' } | { kind: 'done', opened: number, skipped: string[] } | { kind: 'error', message: string }
+
+type ApplyState = { kind: 'idle' } | { kind: 'applying' } | { kind: 'applied', files: string[] } | { kind: 'error', message: string }
+
+function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: string | null, patch: string }) {
+  const [copied, setCopied] = useState(false)
+  const [apply, setApply] = useState<ApplyState>({ kind: 'idle' })
+  const [suggest, setSuggest] = useState<SuggestState>({ kind: 'idle' })
+  const queryClient = useQueryClient()
+  const [, setParams] = useSearchParams()
+  const { mergeRequest, files } = useReview()
+  const openSuggestions = useChatControls()?.openSuggestions
+
+  async function suggestInGitlab() {
+    setSuggest({ kind: 'working' })
+    try {
+      const patchFiles = parseUnifiedPatch(patch)
+      const mrFiles = new Map(files.filter(file => file.status !== 'removed').map(file => [file.path, file]))
+      const contents = new Map<string, string | null>()
+      await Promise.all(patchFiles.map(async (patchFile) => {
+        if (!patchFile.newPath || !mrFiles.has(patchFile.newPath))
+          return
+        const pair = await api.fileContents(mergeRequest.ref, mergeRequest.diffRefs, null, patchFile.newPath)
+        contents.set(patchFile.newPath, pair.newContents)
+      }))
+      const plan = planSuggestions(patchFiles, (path) => {
+        const file = mrFiles.get(path)
+        const headContents = contents.get(path)
+        if (!file || headContents === undefined)
+          return null
+        const lineMap = createLineMap(file.diff)
+        return { headContents, shows: line => lineMap.shows('additions', line) }
+      })
+      openSuggestions?.(plan.drafts)
+      setSuggest({ kind: 'done', opened: plan.drafts.length, skipped: plan.skipped })
+    }
+    catch (cause) {
+      setSuggest({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+    }
+  }
+
+  async function copy() {
+    await navigator.clipboard.writeText(patch)
+    setCopied(true)
+  }
+
+  async function applyToRepo() {
+    if (!repoPath)
+      return
+    setApply({ kind: 'applying' })
+    try {
+      const result = await api.applyPatch(mrRef, repoPath, patch)
+      setApply({ kind: 'applied', files: result.files })
+      void queryClient.invalidateQueries({ queryKey: localChangesKey(mrRef, repoPath) })
+    }
+    catch (cause) {
+      setApply({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+    }
+  }
+
+  return (
+    <div className={css({ display: 'flex', flexDir: 'column', gap: '1.5', mt: '1.5' })}>
+      <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '1.5' })}>
+        <Button size="xs" onClick={() => void copy()}>
+          {copied ? <Check /> : <ClipboardCopy />}
+          {copied ? 'Copied' : 'Copy patch'}
+        </Button>
+        <Button size="xs" disabled={suggest.kind === 'working'} title="Open comment boxes on the changed lines, filled with GitLab suggestions. Nothing is posted until you click Comment." onClick={() => void suggestInGitlab()}>
+          {suggest.kind === 'working' ? <Loader2 className={spinner} /> : <MessageSquarePlus />}
+          Suggest in GitLab
+        </Button>
+        {repoPath && (
+          <Button
+            size="xs"
+            disabled={apply.kind === 'applying' || apply.kind === 'applied'}
+            title={`Apply to ${repoPath}`}
+            onClick={() => void applyToRepo()}
+          >
+            {apply.kind === 'applying' ? <Loader2 className={spinner} /> : <GitPullRequestArrow />}
+            {apply.kind === 'applied' ? 'Applied' : 'Apply to local repository'}
+          </Button>
+        )}
+      </div>
+      {suggest.kind === 'done' && (
+        <div className={css({ fontSize: 'xs', color: suggest.opened ? 'success.fg' : 'fg.muted' })}>
+          {suggest.opened
+            ? `Opened ${suggest.opened === 1 ? '1 comment box' : `${suggest.opened} comment boxes`} in the diff. Check each one and click Comment to post it.`
+            : 'No comment boxes could be opened.'}
+          {suggest.skipped.length > 0 && (
+            <ul className={css({ mt: '1', pl: '4', listStyle: 'disc', color: 'fg.muted' })}>
+              {suggest.skipped.map(reason => <li key={reason}>{reason}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+      {suggest.kind === 'error' && <div className={css({ fontSize: 'xs', color: 'danger.fg' })}>{suggest.message}</div>}
+      {apply.kind === 'applied' && (
+        <div className={css({ fontSize: 'xs', color: 'success.fg' })}>
+          {`Changed ${apply.files.join(', ') || 'no files'} in ${repoPath}. The changes are not committed yet. `}
+          <button
+            type="button"
+            onClick={() => setParams((current) => {
+              const next = new URLSearchParams(current)
+              next.set('tab', 'local')
+              return next
+            }, { replace: true })}
+            className={css({ color: 'accent.fg', textDecoration: 'underline', cursor: 'pointer' })}
+          >
+            View local changes
+          </button>
+        </div>
+      )}
+      {apply.kind === 'error' && (
+        <div className={css({ fontSize: 'xs', color: 'danger.fg', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>{apply.message}</div>
+      )}
+    </div>
+  )
+}
+
+function PatchBlock({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: string | null, patch: string }) {
+  const files = useMemo(() => parsePatch(patch), [patch])
+  return (
+    <div>
+      {files.length ? <PatchView files={files} /> : <pre>{patch}</pre>}
+      <PatchActions mrRef={mrRef} repoPath={repoPath} patch={patch} />
+    </div>
+  )
+}
+
+interface MessageViewProps {
+  message: ChatMessage
+  baseUrl: string
+  mrRef: MrRef
+  repoPath: string | null
+  onOpen: (request: PromptViewerRequest) => void
+}
+
+function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewProps) {
   if (message.role === 'user') {
     return (
-      <div className={css({ alignSelf: 'flex-end', maxW: '90%', display: 'flex', flexDir: 'column', alignItems: 'flex-end', gap: '1.5' })}>
+      <div className={cx('group', css({ alignSelf: 'flex-end', maxW: '90%', display: 'flex', flexDir: 'column', alignItems: 'flex-end', gap: '1.5' }))}>
         {message.contexts.length > 0 && (
           <div className={css({ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '1' })}>
-            {message.contexts.map((context, index) => <ContextChip key={index} context={context} />)}
+            {message.contexts.map((context, index) => <ContextChip key={index} context={context} onOpen={onOpen} />)}
           </div>
         )}
         <div className={css({ px: '3', py: '2', fontSize: 'sm', bg: 'accent.subtle', color: 'fg.default', borderRadius: 'lg', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>
           {message.text}
         </div>
+        <button
+          type="button"
+          onClick={() => onOpen({
+            title: 'What was sent to Claude',
+            description: 'The message and instructions exactly as Pull Review sent them for this question.',
+            load: () => api.chatSent(mrRef, message.id),
+          })}
+          className={css({ fontSize: 'xs', color: 'fg.subtle', cursor: 'pointer', opacity: 0, _groupHover: { opacity: 1 }, _focusVisible: { opacity: 1 }, _hover: { color: 'accent.fg', textDecoration: 'underline' } })}
+        >
+          View what was sent
+        </button>
       </div>
     )
   }
@@ -136,7 +328,16 @@ function MessageView({ message, baseUrl }: { message: ChatMessage, baseUrl: stri
   return (
     <div className={css({ minW: '0' })}>
       <ToolLine message={message} />
-      {message.text && <Markdown baseUrl={baseUrl}>{message.text}</Markdown>}
+      {message.text && (
+        <Markdown
+          baseUrl={baseUrl}
+          renderCodeBlock={message.status === 'done'
+            ? (language, code) => isPatch(language, code) ? <PatchBlock mrRef={mrRef} repoPath={repoPath} patch={code} /> : null
+            : undefined}
+        >
+          {message.text}
+        </Markdown>
+      )}
       {waiting && (
         <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', color: 'fg.subtle', '& svg': { w: '3.5', h: '3.5' } })}>
           <Loader2 className={spinner} />
@@ -176,8 +377,11 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   const attached = chatDraft.selection ? [...chatDraft.contexts, chatDraft.selection] : chatDraft.contexts
   const { state, apply } = useChatSession(mrRef, true)
   const localRepo = useLocalRepo(mrRef)
+  const [settings, updateSettings] = useSettings()
+  const modelChoice = { model: settings.chatModel, effort: settings.chatEffort }
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [viewer, setViewer] = useState<PromptViewerRequest | null>(null)
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -196,9 +400,9 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   }, [state])
 
   useEffect(() => {
-    if (attached.length)
+    if (chatDraft.contexts.length)
       inputRef.current?.focus()
-  }, [chatDraft.contexts.length, chatDraft.selection])
+  }, [chatDraft.contexts.length])
 
   async function send(text: string) {
     if (!text.trim() || sending || state.running)
@@ -207,7 +411,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
     setError(null)
     stickToBottom.current = true
     try {
-      apply(await api.chatSend(mrRef, { text, contexts: attached, repoPath: localRepo.path }))
+      apply(await api.chatSend(mrRef, { text, contexts: attached, repoPath: localRepo.path, ...modelChoice }))
       setDraft('')
       chatDraft.clear()
     }
@@ -248,8 +452,8 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           <div className={css({ display: 'flex', flexDir: 'column', gap: '2', mt: 'auto' })}>
             <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1' })}>
               {controls.autoSelection
-                ? 'Ask about this merge request. Lines you select in a diff are added to your question.'
-                : 'Ask about this merge request. Select lines in a diff and click Ask Claude in the file header to add them.'}
+                ? 'Ask about this merge request. Lines and review comments you select in a diff are added to your question.'
+                : 'Ask about this merge request. Select lines or review comments in a diff and click Ask Claude in the file header to add them.'}
             </p>
             {SUGGESTIONS.map(suggestion => (
               <button
@@ -264,7 +468,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
             ))}
           </div>
         )}
-        {state.messages.map(message => <MessageView key={message.id} message={message} baseUrl={baseUrl} />)}
+        {state.messages.map(message => <MessageView key={message.id} message={message} baseUrl={baseUrl} mrRef={mrRef} repoPath={localRepo.path} onOpen={setViewer} />)}
       </div>
 
       <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
@@ -279,9 +483,9 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           {attached.length > 0 && (
             <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '1' })}>
               {chatDraft.contexts.map((context, index) => (
-                <ContextChip key={`${context.path}:${context.side}:${context.startLine}`} context={context} onRemove={() => chatDraft.removeContext(index)} />
+                <ContextChip key={`${context.path}:${context.side}:${context.startLine}`} context={context} onOpen={setViewer} onRemove={() => chatDraft.removeContext(index)} />
               ))}
-              {chatDraft.selection && <ContextChip live context={chatDraft.selection} onRemove={chatDraft.dismissSelection} />}
+              {chatDraft.selection && <ContextChip live context={chatDraft.selection} onOpen={setViewer} onRemove={chatDraft.dismissSelection} />}
             </div>
           )}
           <textarea
@@ -299,7 +503,26 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
             aria-label="Message to Claude"
             className={css({ w: 'full', resize: 'none', bg: 'transparent', outline: 'none', fontSize: 'sm', color: 'fg.default', _placeholder: { color: 'fg.subtle' } })}
           />
-          <div className={css({ display: 'flex', justifyContent: 'flex-end' })}>
+          <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
+            <Select variant="ghost" label="Model" value={settings.chatModel} options={MODEL_OPTIONS} onChange={chatModel => updateSettings({ chatModel })} />
+            <Select variant="ghost" label="Effort" value={settings.chatEffort} options={EFFORT_OPTIONS} onChange={chatEffort => updateSettings({ chatEffort })} />
+            <span className={css({ flex: '1' })} />
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!draft.trim() && !attached.length}
+              onClick={() => {
+                const input = { text: draft, contexts: attached, repoPath: localRepo.path, ...modelChoice }
+                setViewer({
+                  title: 'Prompt preview',
+                  description: 'What Claude will get if you send now: your message, the instructions, and the files it can read.',
+                  load: () => api.chatPreview(mrRef, input),
+                })
+              }}
+            >
+              <Eye />
+              Preview
+            </Button>
             {busy
               ? (
                   <Button size="xs" onClick={() => void api.chatStop(mrRef).then(apply)}>
@@ -316,6 +539,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           </div>
         </form>
       </div>
+      <PromptViewer request={viewer} onClose={() => setViewer(null)} />
     </aside>
   )
 }

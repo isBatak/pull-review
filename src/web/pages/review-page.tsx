@@ -6,6 +6,7 @@ import { css } from 'styled-system/css'
 import { BUNDLE_COMMENT_MARKER } from '../../shared/bundle'
 import { mrKey } from '../../shared/mr-ref'
 import { BundlePanel } from '../components/bundle/bundle-panel'
+import { LocalChangesPanel } from '../components/local-changes-panel'
 import { ChatPanel } from '../components/chat/chat-panel'
 import { FileDiffCard } from '../components/file-diff-card'
 import { LocalCheckoutChip } from '../components/local-checkout-chip'
@@ -20,7 +21,7 @@ import { UnderlineTabs } from '../components/ui/underline-tabs'
 import { useDiscussions, useMergeRequest } from '../hooks/use-merge-request'
 import { ApiError } from '../lib/api'
 import { ChatContext, ChatDraftContext, useChatAvailable, useChatState } from '../lib/chat'
-import { useLocalRepo } from '../lib/local-repos'
+import { useLocalChanges, useLocalRepo } from '../lib/local-repos'
 import { SymbolContext } from '../lib/symbols'
 import type { SymbolRequest } from '../lib/symbols'
 import { domIdForFile } from '../lib/format'
@@ -31,7 +32,7 @@ import { ErrorState, LoadingState } from './states'
 
 const EMPTY: Discussion[] = []
 
-type ReviewTab = 'code' | 'overview' | 'bundle'
+type ReviewTab = 'code' | 'overview' | 'bundle' | 'local'
 
 interface SortedDiscussions {
   general: Discussion[]
@@ -210,7 +211,9 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
   const closeSymbol = useCallback(() => setSymbolRequest(null), [])
   const localRepo = useLocalRepo(mrRef)
   const tabParam = params.get('tab')
-  const tab: ReviewTab = tabParam === 'overview' || tabParam === 'bundle' ? tabParam : 'code'
+  const localChanges = useLocalChanges(mrRef, localRepo.path, payload.mergeRequest.diffRefs.headSha)
+  const localChangeCount = (localChanges.data?.files.length ?? 0) + (localChanges.data?.unpushed.length ?? 0)
+  const tab: ReviewTab = tabParam === 'overview' || tabParam === 'bundle' || (tabParam === 'local' && localRepo.path) ? tabParam : 'code'
   const useGroupTabs = settings.groupLayout === 'tabs'
   const activeGroupKey = useGroupTabs && groups.some(group => group.key === params.get('group')) ? params.get('group')! : 'all'
   const visibleGroups = activeGroupKey === 'all' ? groups : groups.filter(group => group.key === activeGroupKey)
@@ -240,6 +243,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
 
   const context = useMemo(() => ({
     mergeRequest: payload.mergeRequest,
+    files: payload.files,
     viewer: payload.viewer,
     projectUrl: `https://${mrRef.host}/${mrRef.project}`,
   }), [payload, mrRef])
@@ -312,6 +316,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                         badge: unresolvedOverviewCount > 0 && <span aria-label={`${unresolvedOverviewCount} unresolved`} className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'accent.default' })} />,
                       },
                       { value: 'bundle', label: 'Bundle' },
+                      ...(localRepo.path ? [{ value: 'local' as const, label: 'Local changes', count: localChangeCount || null }] : []),
                     ]}
                   />
                   {useGroupTabs && tab === 'code' && groups.length > 1 && (
@@ -328,6 +333,13 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                     />
                   )}
                 </div>
+                {tab === 'local' && localRepo.path && (
+                  <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
+                    <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
+                      <LocalChangesPanel mrRef={mrRef} repoPath={localRepo.path} />
+                    </div>
+                  </div>
+                )}
                 {tab === 'bundle' && (
                   <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
                     <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>

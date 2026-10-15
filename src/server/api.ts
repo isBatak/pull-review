@@ -8,6 +8,10 @@ import { Hono } from 'hono'
 import { ChatError } from './chat/service'
 import { EditorError, editorStatus, openInEditor } from './local/editor'
 import { createGitTools, expandHome, GitError } from './local/git'
+import type { CommitPlanInput, PlannedCommit } from '../shared/commit-plan'
+import { discardLocalChanges, readLocalChanges } from './local/changes'
+import { commitLocalChanges, pushLocalCommits } from './local/commits'
+import { applyPatch } from './local/patch'
 import { createRepoLinks } from './local/repo-link'
 import { grepSymbol } from './local/symbols'
 import { isSearchableSymbol } from '../shared/symbols'
@@ -301,8 +305,18 @@ export function createApi(options: ApiOptions) {
 
   function loadSnapshot(client: GitlabClient) {
     return async () => {
-      const [mergeRequest, files] = await Promise.all([client.mergeRequest(), client.diffs()])
-      return { mergeRequest, files }
+      const [mergeRequest, files, discussions] = await Promise.all([client.mergeRequest(), client.diffs(), client.discussions()])
+      return { mergeRequest, files, discussions }
+    }
+  }
+
+  function readSendInput(input: Partial<ChatSendInput>): ChatSendInput {
+    return {
+      text: String(input.text ?? ''),
+      contexts: Array.isArray(input.contexts) ? input.contexts : [],
+      repoPath: input.repoPath ?? null,
+      model: String(input.model ?? ''),
+      effort: String(input.effort ?? ''),
     }
   }
 
@@ -318,6 +332,71 @@ export function createApi(options: ApiOptions) {
       return c.json({ error: 'Expected repoPath' }, 400)
     const mergeRequest = await c.var.client.mergeRequest()
     return c.json(await repoLinks.checkout(repoPath, readRef(c)!, mergeRequest.sourceBranch, mergeRequest.diffRefs.headSha))
+  })
+
+  api.get('/mr/local/changes', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const repoPath = c.req.query('repoPath') ?? ''
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    return c.json(await readLocalChanges(gitTools, readRef(c)!, repoPath, c.req.query('headSha') ?? ''))
+  })
+
+  api.post('/mr/local/discard', async (c) => {
+    if (!host || !gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath, paths } = await c.req.json<{ repoPath: string, paths: string[] | null }>()
+    if (!repoPath || (paths !== null && (!Array.isArray(paths) || paths.some(path => typeof path !== 'string'))))
+      return c.json({ error: 'Expected repoPath and paths' }, 400)
+    return c.json(await discardLocalChanges(host, gitTools, readRef(c)!, repoPath, paths))
+  })
+
+  async function mergeRequestBranch(client: GitlabClient) {
+    const mergeRequest = await client.mergeRequest()
+    return { title: mergeRequest.title, branch: mergeRequest.sourceBranch, headSha: mergeRequest.diffRefs.headSha }
+  }
+
+  api.post('/mr/local/commit-plan', async (c) => {
+    if (!options.chat || !await options.chat.available())
+      return c.json({ error: 'Claude Code is not installed.' }, 404)
+    const input = await c.req.json<Partial<CommitPlanInput>>()
+    if (!input.repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    const mr = await mergeRequestBranch(c.var.client)
+    return c.json(await options.chat.planCommits(readRef(c)!, { repoPath: input.repoPath, model: String(input.model ?? ''), effort: String(input.effort ?? ''), title: mr.title, branch: mr.branch }))
+  })
+
+  api.post('/mr/local/commit', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const input = await c.req.json<{ repoPath: string, commits: PlannedCommit[], push: boolean, skipHooks: boolean }>()
+    const commitsValid = Array.isArray(input.commits) && input.commits.every(commit => typeof commit?.message === 'string' && Array.isArray(commit.files) && commit.files.every(file => typeof file === 'string'))
+    if (!input.repoPath || !commitsValid)
+      return c.json({ error: 'Expected repoPath and commits' }, 400)
+    return c.json(await commitLocalChanges(gitTools, readRef(c)!, input.repoPath, await mergeRequestBranch(c.var.client), {
+      commits: input.commits,
+      push: input.push === true,
+      skipHooks: input.skipHooks === true,
+    }))
+  })
+
+  api.post('/mr/local/push', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath } = await c.req.json<{ repoPath: string }>()
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    return c.json(await pushLocalCommits(gitTools, readRef(c)!, repoPath, await mergeRequestBranch(c.var.client)))
+  })
+
+  api.post('/mr/local/apply-patch', async (c) => {
+    if (!host || !gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath, patch } = await c.req.json<{ repoPath: string, patch: string }>()
+    if (!repoPath || !patch?.trim())
+      return c.json({ error: 'Expected repoPath and patch' }, 400)
+    return c.json(await applyPatch(host, gitTools, readRef(c)!, repoPath, patch))
   })
 
   api.get('/mr/symbols', async (c) => {
@@ -344,14 +423,17 @@ export function createApi(options: ApiOptions) {
 
   api.post('/mr/chat/messages', async (c) => {
     const input = await c.req.json<ChatSendInput>()
-    return c.json(chatService().send(chatRef(c), loadSnapshot(c.var.client), {
-      text: String(input.text ?? ''),
-      contexts: Array.isArray(input.contexts) ? input.contexts : [],
-      repoPath: input.repoPath ?? null,
-    }))
+    return c.json(await chatService().send(chatRef(c), loadSnapshot(c.var.client), readSendInput(input)))
   })
 
-  api.post('/mr/chat/stop', async c => c.json(chatService().stop(chatRef(c))))
+  api.post('/mr/chat/preview', async (c) => {
+    const input = await c.req.json<ChatSendInput>()
+    return c.json(await chatService().preview(chatRef(c), loadSnapshot(c.var.client), readSendInput(input)))
+  })
+
+  api.get('/mr/chat/sent', async c => c.json(await chatService().sentPrompt(chatRef(c), c.req.query('messageId') ?? '')))
+
+  api.post('/mr/chat/stop', async c => c.json(await chatService().stop(chatRef(c))))
 
   api.post('/mr/chat/reset', async c => c.json(await chatService().reset(chatRef(c))))
 
