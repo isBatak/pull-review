@@ -129,11 +129,15 @@ function normalizeDiscussion(discussion: RawDiscussion): Discussion {
 }
 
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|avif|bmp|ico)$/i
-const LFS_POINTER = /^[+-]?version https:\/\/git-lfs\.github\.com\/spec\/v1$/m
+const LFS_POINTER = /^[ +-]?version https:\/\/git-lfs\.github\.com\/spec\/v1$/m
+
+export function isLfsPointerDiff(diff: string) {
+  return LFS_POINTER.test(diff)
+}
 
 function normalizeDiff(raw: RawDiff, index: number): DiffFile {
   const isBinary = /^Binary files /.test(raw.diff)
-    || LFS_POINTER.test(raw.diff)
+    || isLfsPointerDiff(raw.diff)
     || (!raw.diff && !raw.too_large && !raw.collapsed && IMAGE_EXTENSION.test(raw.new_path))
   const counts = isBinary ? { additions: 0, deletions: 0 } : countChanges(raw.diff)
   const status = raw.new_file ? 'added' : raw.deleted_file ? 'removed' : raw.renamed_file ? 'renamed' : 'modified'
