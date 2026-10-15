@@ -3,22 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { css } from 'styled-system/css'
 import { AUTO_EDITOR, EDITORS, editorById } from '../../../shared/editors'
 import { api } from '../../lib/api'
-
-const select = css({
-  w: 'full',
-  maxW: 'sm',
-  h: '9',
-  px: '2.5',
-  fontSize: 'sm',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  outline: 'none',
-  cursor: 'pointer',
-  _focus: { borderColor: 'accent.default' },
-})
+import { Select } from '../ui/select'
 
 const fieldLabel = css({ display: 'block', fontSize: 'xs', fontWeight: 'semibold', mb: '1.5' })
 const fieldHint = css({ fontSize: 'xs', color: 'fg.subtle', mt: '1.5' })
@@ -36,15 +21,16 @@ export function EditorSetting({ settings, onChange }: { settings: AppSettings, o
   return (
     <div>
       <label className={fieldLabel} htmlFor="settings-editor">Code editor</label>
-      <select id="settings-editor" className={select} value={settings.editor} onChange={event => onChange({ editor: event.target.value })}>
-        <option value={AUTO_EDITOR}>Find automatically{detected ? ` (now ${detected.label})` : ''}</option>
-        {sorted.map(editor => (
-          <option key={editor.id} value={editor.id}>
-            {editor.label}
-            {status.data && !installed.has(editor.id) ? ' (not found)' : ''}
-          </option>
-        ))}
-      </select>
+      <Select
+        id="settings-editor"
+        label="Code editor"
+        value={settings.editor}
+        onChange={editor => onChange({ editor })}
+        options={[
+          { value: AUTO_EDITOR, label: `Find automatically${detected ? ` (now ${detected.label})` : ''}` },
+          ...sorted.map(editor => ({ value: editor.id, label: `${editor.label}${status.data && !installed.has(editor.id) ? ' (not found)' : ''}` })),
+        ]}
+      />
       <p className={fieldHint}>
         Used to open a definition or reference from a review in your local repository. Find automatically picks the editor that is running, then the first one installed.
       </p>
