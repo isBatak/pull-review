@@ -99,6 +99,8 @@ export function createRepoLinks(host: LocalHost, tools: GitTools) {
       return { status: 'ready', path, branch, sha, message: null }
     if (await isDirty(path))
       return { status: 'dirty', path, branch, sha, message: `${path} has uncommitted changes, so it stays on ${current ?? head?.slice(0, 8)}.` }
+    if (!current && head && !(await git(['for-each-ref', '--count=1', '--contains', head, '--format=%(refname)', 'refs/heads', 'refs/remotes'], path)).stdout.trim())
+      return { status: 'dirty', path, branch, sha, message: `${path} has commits that are not pushed to any branch, so it stays on ${head.slice(0, 8)}. Push or discard them first.` }
 
     await tools.ensureCommit(repo, ref, sha)
     const validBranch = (await git(['check-ref-format', '--branch', branch], path)).code === 0
