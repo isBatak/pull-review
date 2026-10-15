@@ -19,6 +19,16 @@ describe('settings backup', () => {
     expect(parsed.warnings).toEqual([])
   })
 
+  it('exports the repository found where the CLI started unless one is saved for that project', () => {
+    const detected = { host: 'gitlab.tradelocker.com', project: 'tradelocker/tradelocker', path: '/code/tradelocker-review' }
+    const exported = buildBackup(settings, {}, new Date(), detected)
+    expect(exported.settings.localRepos).toEqual({ 'gitlab.tradelocker.com/tradelocker/tradelocker': '/code/tradelocker-review' })
+    expect(parseBackup(JSON.stringify(exported)).settings.localRepos).toEqual(exported.settings.localRepos)
+
+    const saved = { ...settings, localRepos: { 'gitlab.tradelocker.com/tradelocker/tradelocker': '/code/mine' } }
+    expect(buildBackup(saved, {}, new Date(), detected).settings.localRepos).toEqual(saved.localRepos)
+  })
+
   it('rejects files that are not backups', () => {
     expect(() => parseBackup('not json')).toThrow('not valid JSON')
     expect(() => parseBackup('{"hello":1}')).toThrow('not a Pull Review settings file')

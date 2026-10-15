@@ -3,6 +3,7 @@ import type { AppSettings } from '../../lib/settings'
 import { Download, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { css } from 'styled-system/css'
+import { useAppConfig } from '../../lib/local-repos'
 import { backupFileName, buildBackup, parseBackup, PREFERENCE_KEYS } from '../../lib/settings-backup'
 import { readStoredValue, writeStoredValue } from '../../lib/stored-state'
 import { Button } from '../ui/button'
@@ -43,11 +44,12 @@ interface BackupTabProps {
 
 export function BackupTab({ settings, onReplace }: BackupTabProps) {
   const fileInput = useRef<HTMLInputElement>(null)
+  const config = useAppConfig()
   const [pending, setPending] = useState<ParsedBackup | null>(null)
   const [message, setMessage] = useState<{ tone: 'error' | 'success', text: string } | null>(null)
 
   function exportSettings() {
-    const backup = buildBackup(settings, currentPreferences())
+    const backup = buildBackup(settings, currentPreferences(), new Date(), config.data?.localRepo ?? null)
     const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

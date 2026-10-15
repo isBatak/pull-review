@@ -33,8 +33,18 @@ export interface ParsedBackup {
   warnings: string[]
 }
 
-export function buildBackup(settings: AppSettings, preferences: Preferences, now = new Date()): SettingsBackup {
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: now.toISOString(), settings, preferences }
+export interface DetectedRepo {
+  host: string
+  project: string
+  path: string
+}
+
+export function buildBackup(settings: AppSettings, preferences: Preferences, now = new Date(), detectedRepo: DetectedRepo | null = null): SettingsBackup {
+  const detectedKey = detectedRepo && `${detectedRepo.host}/${detectedRepo.project}`
+  const localRepos = detectedRepo && detectedKey && settings.localRepos[detectedKey] === undefined
+    ? { ...settings.localRepos, [detectedKey]: detectedRepo.path }
+    : settings.localRepos
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: now.toISOString(), settings: { ...settings, localRepos }, preferences }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
