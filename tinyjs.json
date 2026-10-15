@@ -3,7 +3,7 @@
   "title": "Pull Review",
   "size": "1440x900",
   "id": "dev.pull-review.app",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "icon": "build/icon.png",
   "backend": "out/app-backend/main.js",
   "frontend": {

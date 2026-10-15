@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.2.6 (2026-10-13)
+
+### Claude chat
+
+- Select code and review comments with the mouse to add them to your question, including each comment's author.
+- Claude reads all review threads, so "fix this based on the comment" just works.
+- Pick the model and effort in the bottom left of the chat box.
+- Faster answers: Claude reads only the files it needs and doesn't re-read them on every message.
+- See exactly what Claude gets: click a chip, use Preview, or "View what was sent" on a sent message.
+- Chats are saved and survive restarts. Unused chats are deleted after 30 days.
+
+### Fixing code
+
+- Claude answers fix requests with a patch, shown in the same diff viewer as the review.
+- Under a patch: Copy, Apply to local repository, or Suggest in GitLab.
+- Suggest in GitLab opens prefilled suggestion comments on the changed lines. Nothing is posted until you click Comment.
+- Suggestions in comments show as a "Suggested change" box, like on GitHub.
+
+### Local changes
+
+- New Local changes tab lists uncommitted changes in your local repository, with a diff per file and Discard.
+- Commit and push from the tab. "Plan atomic commits with Claude" splits the changes into commits with messages in your repository's style.
+- Planning uses its own model and effort, Haiku with low effort by default.
+- Pushes never force. If GitLab has newer commits, nothing is overwritten and your commits stay local.
+- New "Open in editor" button in each file header.
+
+### Images
+
+- Git LFS images show as images again.
+- New Difference (pixel diff, like Playwright) and Onion skin comparison modes.
+
+### Fixes
+
+- Apply to local repository failed for patches that changed more than one file.
+- Patches in the chat could show no lines until the Code tab was opened.
+- Opening a merge request could move the worktree away from unpushed commits.
+- Settings export now includes the local repository found where you started the CLI.
+- The Local changes tab ignored the split or unified layout and line wrap settings.
+- Icons in the layout toggle weren't centered.
+- Dropdowns now use the same styled menu everywhere instead of the browser's own.
+
 ## 0.2.5 (2026-10-12)
 
 - Click a function, variable or type name in a diff to see its definition and references in a panel styled like GitHub's: the kind and name at the top, the definition, references grouped by file with counts, arrows that step through the references in this review, and a link to search for the name in GitLab. Code lines are syntax colored with the same GitHub theme as the diff. Names are underlined when you point at them.
