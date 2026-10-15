@@ -10,6 +10,7 @@ import { Fruncate } from '@pierre/truncate/react'
 import { ChevronDown, ChevronRight, Code2, Copy, ExternalLink, FileWarning, MessageSquare, Sparkles } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card, disclosure } from 'styled-system/recipes'
 import { describeRange, toChatThread } from '../../shared/chat'
 import { codeForRange, createLineMap } from '../../shared/line-map'
 import { parseSuggestionRange } from '../../shared/suggestions'
@@ -17,7 +18,7 @@ import { isSearchableSymbol } from '../../shared/symbols'
 import { api } from '../lib/api'
 import { useChatControls } from '../lib/chat'
 import { readDiffTextSelection, sameTextSelection } from '../lib/diff-selection'
-import { GITHUB_THEMES } from '../lib/code-tokens'
+import { useCodeThemes } from '../lib/code-tokens'
 import { useOpenSymbol } from '../lib/symbols'
 import { directoryName, domIdForFile, fileName } from '../lib/format'
 import { useLocalRepo } from '../lib/local-repos'
@@ -114,6 +115,7 @@ function FileDiffCardImpl({
 }: FileDiffCardProps) {
   const { mergeRequest, projectUrl } = useReview()
   const { create } = useReviewActions()
+  const codeThemes = useCodeThemes()
   const [draft, setDraft] = useState<DraftTarget | null>(null)
   const [largeDiff, setLargeDiff] = useState<FileDiffMetadata | null>(null)
   const [loadingLarge, setLoadingLarge] = useState(false)
@@ -218,7 +220,7 @@ function FileDiffCardImpl({
   const options = useMemo<FileDiffOptions<AnnotationData, undefined>>(() => ({
     diffStyle: isOneSided && !largeDiff ? 'unified' : layout,
     overflow: wrap ? 'wrap' : 'scroll',
-    theme: GITHUB_THEMES,
+    theme: codeThemes,
     themeType: theme,
     disableFileHeader: true,
     lineDiffType: 'word-alt',
@@ -236,7 +238,7 @@ function FileDiffCardImpl({
         }
       : undefined,
     loadDiffFiles: file.isBinary ? undefined : loadContents,
-  }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, file.path, chat, selectLines, openSymbol])
+  }), [isOneSided, largeDiff, layout, wrap, theme, codeThemes, openDraft, loadContents, file.isBinary, file.path, chat, selectLines, openSymbol])
 
   const renderAnnotation = useCallback((annotation: DiffLineAnnotation<AnnotationData>) => {
     const { discussions: threads, hasDraft, suggestions: lineSuggestions } = annotation.metadata
@@ -260,7 +262,7 @@ function FileDiffCardImpl({
             </div>
           ))}
           {hasDraft && (
-            <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
+            <div className={cx(card({ tone: 'accent' }), css({ p: '3' }))}>
               <CommentComposer
                 submitLabel="Comment"
                 autoFocus
@@ -276,7 +278,7 @@ function FileDiffCardImpl({
             </div>
           )}
           {lineSuggestions.map(suggestion => (
-            <div key={suggestion.id} className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
+            <div key={suggestion.id} className={cx(card({ tone: 'accent' }), css({ p: '3' }))}>
               <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', mb: '2', fontSize: 'xs', color: 'accent.fg', '& svg': { w: '3.5', h: '3.5' } })}>
                 <Sparkles />
                 Suggestion from Claude. Edit it if needed, then click Comment to post it.
@@ -396,30 +398,15 @@ function FileDiffCardImpl({
   const resolvedCount = discussions.filter(discussion => discussion.resolved).length
   const openCount = discussions.length - resolvedCount
   const statusStyle = STATUS_STYLES[file.status]
+  const header = disclosure({ open: !collapsed })
 
   return (
     <section ref={sectionRef} id={domIdForFile(file.id)} className={css({ scrollMarginTop: '2' })}>
       <header
         onClick={() => onToggleCollapsed(file, !collapsed)}
-        className={css({
-          position: 'sticky',
-          top: '0',
-          zIndex: 'sticky',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '2',
-          h: '10',
-          px: '2.5',
-          bg: 'bg.subtle',
-          borderWidth: '1px',
-          borderColor: 'border.default',
-          borderTopRadius: 'lg',
-          borderBottomRadius: collapsed ? 'lg' : '0',
-          cursor: 'pointer',
-          userSelect: 'none',
-        })}
+        className={header.header}
       >
-        <span className={css({ color: 'fg.subtle', display: 'inline-flex', '& svg': { w: '4', h: '4' } })}>
+        <span className={header.icon}>
           {collapsed ? <ChevronRight /> : <ChevronDown />}
         </span>
         <Checkbox

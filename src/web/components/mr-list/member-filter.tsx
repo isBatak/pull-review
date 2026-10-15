@@ -4,6 +4,7 @@ import { Portal } from '@ark-ui/react/portal'
 import { Check, ChevronDown } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { Avatar } from '../ui/avatar'
 import { WithTooltip } from '../ui/button'
 
@@ -124,7 +125,7 @@ export function MemberFilter({ members, selected, counts, onChange }: MemberFilt
           </Menu.Trigger>
           <Portal>
             <Menu.Positioner className={css({ zIndex: 'popover' })}>
-              <Menu.Content className={css({ minW: '60', maxH: '80', overflowY: 'auto', p: '1', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', boxShadow: 'popover', outline: 'none' })}>
+              <Menu.Content className={cx(card({ floating: true }), css({ minW: '60', maxH: '80', overflowY: 'auto', p: '1', outline: 'none' }))}>
                 {overflow.map((member) => {
                   const count = counts?.get(member.username)
                   return (

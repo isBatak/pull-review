@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.7 (2026-10-15)
+
+### Themes
+
+- New Theme setting under Settings, General, with two themes: Classic and Tavern.
+- Classic is the look you already know, in light or dark.
+- Tavern follows the warcraftcn-ui style, with all of its art: wooden panels with iron frames, blue command buttons, framed badges, tab plates, gem radio buttons, accordion bars on file headers, parchment scrolls for warnings, rarity tooltips, shimmering skeletons and the summoning glyph spinner. It is always dark, so the light and dark button is hidden while it is on.
+- Pick a Tavern faction in Settings: Neutral, Human, Orc, Elf or Undead. It changes the tabs, checkboxes, avatar frames, loading skeletons, warnings, home portrait and mouse cursor.
+- Tavern frames use measured 9-slice borders, so corners keep their shape at any size and only the edges stretch or repeat.
+- In Tavern, loading a merge request shows a Warcraft-style loading screen: full-screen artwork, a review tip and a framed golden progress bar.
+- Tavern uses the warm Gruvbox colors for code in diffs.
+- The theme is included in settings backups.
+- Dark mode no longer flashes light for a moment when the app starts.
+
 ## 0.2.6 (2026-10-13)
 
 ### Claude chat

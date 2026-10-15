@@ -4,6 +4,8 @@ import { Collapsible } from '@ark-ui/react/collapsible'
 import { CheckCircle2, ChevronRight, CircleDot, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card as cardRecipe } from 'styled-system/recipes'
+import {  } from 'styled-system/recipes'
 import { timeAgo } from '../lib/format'
 import { CommentComposer } from './comment-composer'
 import { useReview, useReviewActions } from './review-context'
@@ -11,16 +13,12 @@ import { Avatar } from './ui/avatar'
 import { Button, IconButton } from './ui/button'
 import { Markdown } from './ui/markdown'
 
-const card = css({
-  bg: 'bg.surface',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'lg',
+const card = cx(cardRecipe(), css({
   overflow: 'hidden',
   fontFamily: 'body',
   whiteSpace: 'normal',
   textAlign: 'left',
-})
+}))
 
 function NoteItem({ note, discussion, review }: { note: Note, discussion: Discussion, review: ReviewContextValue }) {
   const [editing, setEditing] = useState(false)

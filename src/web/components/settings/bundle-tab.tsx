@@ -2,23 +2,9 @@ import type { BundleSettings } from '../../../shared/types'
 import type { AppSettings } from '../../lib/settings'
 import { useState } from 'react'
 import { css } from 'styled-system/css'
+import { input } from 'styled-system/recipes'
 import { DEFAULT_BUNDLE_SETTINGS } from '../../lib/settings'
 import { Button } from '../ui/button'
-
-const input = css({
-  w: 'full',
-  h: '9',
-  px: '3',
-  fontSize: 'sm',
-  fontFamily: 'mono',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  outline: 'none',
-  _focus: { borderColor: 'accent.default', boxShadow: '0 0 0 3px color-mix(in srgb, var(--colors-accent-default) 18%, transparent)' },
-})
 
 const fieldLabel = css({ display: 'block', fontSize: 'xs', fontWeight: 'semibold', mb: '1.5' })
 const fieldHint = css({ fontSize: 'xs', color: 'fg.subtle', mt: '1.5' })
@@ -56,7 +42,7 @@ export function BundleTab({ settings, onChange }: { settings: AppSettings, onCha
           <label className={fieldLabel} htmlFor={`bundle-${field.key}`}>{field.label}</label>
           <input
             id={`bundle-${field.key}`}
-            className={input}
+            className={input({ mono: true })}
             value={draft[field.key]}
             onChange={event => setDraft({ ...draft, [field.key]: event.target.value })}
             onBlur={() => commit({ ...draft, [field.key]: draft[field.key].trim() || (field.key === 'modulesPath' ? '' : DEFAULT_BUNDLE_SETTINGS[field.key]) })}
@@ -72,7 +58,7 @@ export function BundleTab({ settings, onChange }: { settings: AppSettings, onCha
               id={`bundle-${field.key}`}
               type="number"
               min={0}
-              className={input}
+              className={input({ mono: true })}
               value={draft[field.key]}
               onChange={event => setDraft({ ...draft, [field.key]: Number(event.target.value) })}
               onBlur={() => commit({ ...draft, [field.key]: Number.isFinite(draft[field.key]) && draft[field.key] >= 0 ? Math.round(draft[field.key]) : DEFAULT_BUNDLE_SETTINGS[field.key] })}

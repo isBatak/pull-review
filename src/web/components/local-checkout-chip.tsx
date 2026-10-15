@@ -1,9 +1,10 @@
 import type { MrRef } from '../../shared/types'
-import { CircleAlert, FolderGit2, Loader2 } from 'lucide-react'
+import { CircleAlert, FolderGit2 } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { ApiError } from '../lib/api'
 import { useLocalCheckout, useLocalRepo } from '../lib/local-repos'
 import { WithTooltip } from './ui/button'
+import { Spinner } from './ui/spinner'
 
 const chip = css({
   display: 'inline-flex',
@@ -38,7 +39,7 @@ export function LocalCheckoutChip({ mrRef, headSha, onSetUp }: { mrRef: MrRef, h
   if (checkout.isFetching) {
     return (
       <span className={cx(chip, okTone, css({ cursor: 'default' }))}>
-        <Loader2 className={css({ animation: 'spin' })} />
+        <Spinner />
         <span className={css({ truncate: true, color: 'fg.subtle' })}>Switching {name}…</span>
       </span>
     )

@@ -1,9 +1,10 @@
 import type { CommitResult, PlannedCommit } from '../../shared/commit-plan'
 import type { LocalChangedFile } from '../../shared/local-changes'
 import type { MrRef } from '../../shared/types'
-import { GitCommitHorizontal, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
+import { GitCommitHorizontal, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { validateCommits } from '../../shared/commit-plan'
 import { api } from '../lib/api'
 import { useChatAvailable } from '../lib/chat'
@@ -12,10 +13,11 @@ import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../lib/model-options'
 import { useSettings } from '../lib/settings'
 import { Button, IconButton } from './ui/button'
 import { Select } from './ui/select'
+import { Spinner } from './ui/spinner'
 
 const LEAVE_OUT = -1
 
-const box = css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg' })
+const box = cx(card({ tone: 'accent' }), css({ display: 'flex', flexDir: 'column', gap: '3', p: '4' }))
 const textarea = css({ w: 'full', minH: '16', p: '2', fontFamily: 'mono', fontSize: 'xs', bg: 'bg.canvas', color: 'fg.default', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', outline: 'none', resize: 'vertical', _focus: { borderColor: 'accent.default' } })
 
 interface CommitFormProps {
@@ -98,7 +100,7 @@ export function CommitForm({ mrRef, repoPath, branch, files, onDone, onCancel }:
         )}
         {chatAvailable && (
           <Button size="xs" disabled={busy} onClick={() => void plan()} title="Claude groups the changes into atomic commits and writes messages in this repository's style. You can edit the plan before committing.">
-            {planning ? <Loader2 className={css({ animation: 'spin' })} /> : <Sparkles />}
+            {planning ? <Spinner /> : <Sparkles />}
             {planning ? 'Planning commits…' : 'Plan atomic commits with Claude'}
           </Button>
         )}
@@ -182,7 +184,7 @@ export function CommitForm({ mrRef, repoPath, branch, files, onDone, onCancel }:
       <div className={css({ display: 'flex', justifyContent: 'flex-end', gap: '2' })}>
         <Button size="sm" variant="ghost" disabled={committing} onClick={onCancel}>Cancel</Button>
         <Button size="sm" variant="solid" disabled={busy || !included.length || problem !== null} onClick={() => void commit()}>
-          {committing ? <Loader2 className={css({ animation: 'spin' })} /> : push ? <Upload /> : <GitCommitHorizontal />}
+          {committing ? <Spinner /> : push ? <Upload /> : <GitCommitHorizontal />}
           {committing ? 'Committing…' : count > 1 ? `Make ${commitLabel}${push ? ' and push' : ''}` : push ? 'Commit and push' : 'Commit'}
         </Button>
       </div>

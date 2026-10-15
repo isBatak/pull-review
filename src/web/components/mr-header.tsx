@@ -10,6 +10,7 @@ import { parseMrTitle } from '../../shared/mr-title'
 import { timeAgo } from '../lib/format'
 import { homePath } from '../lib/last-home'
 import { openExternal } from '../lib/platform'
+import { themeHasLightMode, useThemeName } from '../lib/preferences'
 import { useSettings } from '../lib/settings'
 import { BranchPills } from './branch-pills'
 import { DiffStat } from './file-diff-card'
@@ -72,7 +73,7 @@ function ApproveButton() {
               </Button>
             )
           : (
-              <Button size="md" variant="success" onClick={() => approve.mutate()} disabled={busy || !data.userCanApprove}>
+              <Button size="md" variant="success" frame onClick={() => approve.mutate()} disabled={busy || !data.userCanApprove}>
                 <Check />
                 Approve
               </Button>
@@ -88,6 +89,7 @@ export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, th
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
   const title = parseMrTitle(mergeRequest.title)
   const [settings] = useSettings()
+  const [themeName] = useThemeName()
   const jiraBaseUrl = settings.jiraBaseUrl
   const projectInfo = useProjectInfo({ host: mergeRequest.ref.host, project: mergeRequest.ref.project })
   const defaultBranch = projectInfo.data?.defaultBranch
@@ -158,9 +160,11 @@ export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, th
         <IconButton label={wrap ? 'Disable line wrap' : 'Wrap long lines'} onClick={() => onWrapChange(!wrap)} className={wrap ? css({ color: 'accent.fg' }) : undefined}>
           <WrapText />
         </IconButton>
-        <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun /> : <Moon />}
-        </IconButton>
+        {themeHasLightMode(themeName) && (
+          <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? <Sun /> : <Moon />}
+          </IconButton>
+        )}
         <IconButton label="Reload from GitLab" onClick={onRefresh} disabled={refreshing}>
           <RefreshCw className={refreshing ? css({ animation: 'spin' }) : undefined} />
         </IconButton>

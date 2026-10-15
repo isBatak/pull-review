@@ -4,11 +4,12 @@ import type { LocalChangedFile } from '../../shared/local-changes'
 import type { MrRef } from '../../shared/types'
 import { FileDiff } from '@pierre/diffs/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileCheck2, GitCommitHorizontal, Loader2, RefreshCw, Undo2, Upload } from 'lucide-react'
+import { FileCheck2, GitCommitHorizontal, RefreshCw, Undo2, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { card, notice as noticeRecipe } from 'styled-system/recipes'
 import { api } from '../lib/api'
-import { GITHUB_THEMES } from '../lib/code-tokens'
+import { useCodeThemes } from '../lib/code-tokens'
 import { directoryName, fileName } from '../lib/format'
 import { localChangesKey, useLocalChanges } from '../lib/local-repos'
 import { useDiffLayout, useTheme, useWrapLines } from '../lib/preferences'
@@ -19,6 +20,7 @@ import { DiffStat } from './file-diff-card'
 import { useReview } from './review-context'
 import { Button } from './ui/button'
 import { FileIcon } from './ui/file-icon'
+import { Spinner } from './ui/spinner'
 
 const STATUS_LABELS: Record<LocalChangedFile['status'], string> = {
   added: 'New',
@@ -33,7 +35,7 @@ const diffStyle = {
   '--diffs-line-height': '20px',
 } as React.CSSProperties
 
-const card = css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', overflow: 'hidden' })
+const panel = cx(card(), css({ overflow: 'hidden' }))
 
 function ConfirmDiscard({ label, busy, onConfirm, onCancel }: { label: string, busy: boolean, onConfirm: () => void, onCancel: () => void }) {
   return (
@@ -47,6 +49,7 @@ function ConfirmDiscard({ label, busy, onConfirm, onCancel }: { label: string, b
 
 function LocalFileCard({ file, busy, onDiscard }: { file: LocalChangedFile, busy: boolean, onDiscard: () => void }) {
   const [theme] = useTheme()
+  const codeThemes = useCodeThemes()
   const [layout] = useDiffLayout()
   const [wrap] = useWrapLines()
   const [confirming, setConfirming] = useState(false)
@@ -55,14 +58,14 @@ function LocalFileCard({ file, busy, onDiscard }: { file: LocalChangedFile, busy
   const options = useMemo<FileDiffOptions<undefined, undefined>>(() => ({
     diffStyle: isOneSided ? 'unified' : layout,
     overflow: wrap ? 'wrap' : 'scroll',
-    theme: GITHUB_THEMES,
+    theme: codeThemes,
     themeType: theme,
     disableFileHeader: true,
     lineDiffType: 'word-alt',
-  }), [isOneSided, layout, wrap, theme])
+  }), [isOneSided, layout, wrap, theme, codeThemes])
 
   return (
-    <section className={card}>
+    <section className={panel}>
       <header className={css({ display: 'flex', alignItems: 'center', gap: '2', minH: '10', px: '2.5', bg: 'bg.subtle', borderBottomWidth: '1px', borderColor: 'border.default' })}>
         <FileIcon name={fileName(file.path)} />
         <div className={css({ minW: '0', display: 'flex', alignItems: 'center', fontFamily: 'mono', fontSize: 'xs' })} title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}>
@@ -188,7 +191,7 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
       </div>
       {notice && <div className={css({ fontSize: 'sm', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })} style={{ color: notice.tone === 'error' ? 'var(--colors-danger-fg)' : 'var(--colors-success-fg)' }}>{notice.text}</div>}
       {unpushed.length > 0 && (
-        <div className={css({ display: 'flex', flexDir: 'column', gap: '2', p: '3', bg: 'warning.subtle', borderRadius: 'lg', fontSize: 'sm' })}>
+        <div className={noticeRecipe({ tone: 'warning' })}>
           <div className={css({ display: 'flex', alignItems: 'center', gap: '2', flexWrap: 'wrap' })}>
             <span className={css({ flex: '1', color: 'warning.fg', fontWeight: 'semibold' })}>
               {unpushed.length === 1 ? '1 commit is' : `${unpushed.length} commits are`}
@@ -198,7 +201,7 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
               <span className={css({ fontFamily: 'mono' })}>{branch}</span>
             </span>
             <Button size="xs" variant="solid" disabled={pushing} onClick={() => void pushNow()}>
-              {pushing ? <Loader2 className={css({ animation: 'spin' })} /> : <Upload />}
+              {pushing ? <Spinner /> : <Upload />}
               Push
             </Button>
           </div>

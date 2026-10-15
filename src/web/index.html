@@ -7,9 +7,13 @@
     <title>pull-review</title>
     <script>
       try {
-        const stored = localStorage.getItem('pull-review:theme')
-        const dark = stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+        const mode = JSON.parse(localStorage.getItem('pull-review:theme') ?? 'null')
+        const name = JSON.parse(localStorage.getItem('pull-review:theme-name') ?? '"classic"')
+        const dark = name !== 'classic' || (mode ? mode === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
+        if (name !== 'classic')
+          document.documentElement.dataset.pandaTheme = name
+        document.documentElement.dataset.tavernFaction = JSON.parse(localStorage.getItem('pull-review:tavern-faction') ?? '"default"')
       } catch {}
     </script>
   </head>

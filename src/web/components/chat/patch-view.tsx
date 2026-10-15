@@ -4,7 +4,7 @@ import { FileDiff } from '@pierre/diffs/react'
 import { useMemo } from 'react'
 import { css } from 'styled-system/css'
 import { hashDiff, useTheme } from '../../lib/preferences'
-import { GITHUB_THEMES } from '../../lib/code-tokens'
+import { useCodeThemes } from '../../lib/code-tokens'
 import { directoryName, fileName } from '../../lib/format'
 import { FileIcon } from '../ui/file-icon'
 
@@ -25,14 +25,15 @@ export function parsePatch(patch: string): FileDiffMetadata[] {
 
 export function PatchView({ files }: { files: FileDiffMetadata[] }) {
   const [theme] = useTheme()
+  const codeThemes = useCodeThemes()
   const options = useMemo<FileDiffOptions<undefined, undefined>>(() => ({
     diffStyle: 'unified',
     overflow: 'wrap',
-    theme: GITHUB_THEMES,
+    theme: codeThemes,
     themeType: theme,
     disableFileHeader: true,
     lineDiffType: 'word-alt',
-  }), [theme])
+  }), [theme, codeThemes])
 
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '2' })}>

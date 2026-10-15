@@ -15,10 +15,10 @@ const settings = {
 
 describe('settings backup', () => {
   it('round trips settings and preferences', () => {
-    const backup = buildBackup(settings, { diffLayout: 'unified', wrapLines: true, theme: 'dark', sidebarWidth: 340 }, new Date('2026-10-08T10:00:00Z'))
+    const backup = buildBackup(settings, { diffLayout: 'unified', wrapLines: true, theme: 'dark', themeName: 'tavern', tavernFaction: 'orc', sidebarWidth: 340 }, new Date('2026-10-08T10:00:00Z'))
     const parsed = parseBackup(JSON.stringify(backup))
     expect(parsed.settings).toEqual(settings)
-    expect(parsed.preferences).toEqual({ diffLayout: 'unified', wrapLines: true, theme: 'dark', sidebarWidth: 340 })
+    expect(parsed.preferences).toEqual({ diffLayout: 'unified', wrapLines: true, theme: 'dark', themeName: 'tavern', tavernFaction: 'orc', sidebarWidth: 340 })
     expect(parsed.warnings).toEqual([])
   })
 

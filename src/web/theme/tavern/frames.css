@@ -1,0 +1,70 @@
+[data-panda-theme='tavern'] {
+  --wc-button: url('./assets/button-bg.webp');
+  --wc-button-sm: url('./assets/button-bg-sm.webp');
+  --wc-button-frame: url('./assets/button-bg-with-frame.webp');
+  --wc-button-frame-sm: url('./assets/button-bg-with-frame-sm.webp');
+  --wc-card: url('./assets/card-bg.webp');
+  --wc-input: url('./assets/input-frame.webp');
+  --wc-dropdown: url('./assets/dropdown-menu-bg.webp');
+  --wc-textarea: url('./assets/textarea-bg.webp');
+  --wc-accordion-header: url('./assets/accordion-header.webp');
+  --wc-accordion-content: url('./assets/accordion-content-bg.webp');
+  --wc-icon-sword: url('./assets/svg/sword.svg');
+  --wc-icon-shield: url('./assets/svg/shield.svg');
+  --wc-icon-rune-stone: url('./assets/svg/rune-stone.svg');
+
+  --wc-checkbox-default: url('./assets/checkbox-default.webp');
+  --wc-checkbox-checked-default: url('./assets/checkbox-default-checked.webp');
+  --wc-tab-default: url('./assets/tabs/tab-list.webp');
+  --wc-tab-active-default: url('./assets/tabs/tab-list-active.webp');
+  --wc-tab-content-default: url('./assets/tabs/tab-content.webp');
+  --wc-avatar-default: url('./assets/avatar-default.webp');
+  --wc-scroll-default: url('./assets/toast/scroll-content.webp');
+  --wc-scroll-handle-default: url('./assets/toast/scroll-handle.png');
+  --wc-hero-default: url('./assets/heroes/human-peasant.webp');
+  --wc-cursor-default: auto;
+
+  --wc-checkbox-human: url('./assets/checkbox-human.webp');
+  --wc-checkbox-checked-human: url('./assets/checkbox-human-checked.webp');
+  --wc-tab-human: url('./assets/tabs/tab-list-human.webp');
+  --wc-tab-active-human: url('./assets/tabs/tab-list-active-human.webp');
+  --wc-tab-content-human: url('./assets/tabs/tab-content-human.webp');
+  --wc-avatar-human: url('./assets/avatar-human.webp');
+  --wc-scroll-human: url('./assets/toast/scroll-content-human.webp');
+  --wc-scroll-handle-human: url('./assets/toast/scroll-handle-human.png');
+  --wc-hero-human: url('./assets/heroes/human-hero.webp');
+  --wc-cursor-human: url('./assets/cursors/human.cur'), auto;
+
+  --wc-checkbox-orc: url('./assets/checkbox-orc.webp');
+  --wc-checkbox-checked-orc: url('./assets/checkbox-orc-checked.webp');
+  --wc-tab-orc: url('./assets/tabs/tab-list-orc.webp');
+  --wc-tab-active-orc: url('./assets/tabs/tab-list-active-orc.webp');
+  --wc-tab-content-orc: url('./assets/tabs/tab-content-orc.webp');
+  --wc-avatar-orc: url('./assets/avatar-orc.webp');
+  --wc-scroll-orc: url('./assets/toast/scroll-content-orc.webp');
+  --wc-scroll-handle-orc: url('./assets/toast/scroll-handle-orc.png');
+  --wc-hero-orc: url('./assets/heroes/orc-hero.webp');
+  --wc-cursor-orc: url('./assets/cursors/orc.cur'), auto;
+
+  --wc-checkbox-elf: url('./assets/checkbox-elf.webp');
+  --wc-checkbox-checked-elf: url('./assets/checkbox-elf-checked.webp');
+  --wc-tab-elf: url('./assets/tabs/tab-list-elf.webp');
+  --wc-tab-active-elf: url('./assets/tabs/tab-list-active-elf.webp');
+  --wc-tab-content-elf: url('./assets/tabs/tab-content-elf.webp');
+  --wc-avatar-elf: url('./assets/avatar-elf.webp');
+  --wc-scroll-elf: url('./assets/toast/scroll-content-elf.webp');
+  --wc-scroll-handle-elf: url('./assets/toast/scroll-handle-elf.png');
+  --wc-hero-elf: url('./assets/heroes/elf-hero.webp');
+  --wc-cursor-elf: url('./assets/cursors/elf.cur'), auto;
+
+  --wc-checkbox-undead: url('./assets/checkbox-undead.webp');
+  --wc-checkbox-checked-undead: url('./assets/checkbox-undead-checked.webp');
+  --wc-tab-undead: url('./assets/tabs/tab-list-undead.webp');
+  --wc-tab-active-undead: url('./assets/tabs/tab-list-active-undead.webp');
+  --wc-tab-content-undead: url('./assets/tabs/tab-content-undead.webp');
+  --wc-avatar-undead: url('./assets/avatar-undead.webp');
+  --wc-scroll-undead: url('./assets/toast/scroll-content-undead.webp');
+  --wc-scroll-handle-undead: url('./assets/toast/scroll-handle-undead.png');
+  --wc-hero-undead: url('./assets/heroes/undead-hero.webp');
+  --wc-cursor-undead: url('./assets/cursors/undead.cur'), auto;
+}

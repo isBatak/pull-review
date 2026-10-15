@@ -3,9 +3,10 @@ import type { SymbolHit } from '../../shared/symbols'
 import type { DiffFile, MrRef } from '../../shared/types'
 import type { CodeToken } from '../lib/code-tokens'
 import type { SymbolRequest } from '../lib/symbols'
-import { ChevronDown, ChevronRight, ChevronUp, Code2, ExternalLink, Loader2, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Code2, ExternalLink, Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { card } from 'styled-system/recipes'
 import { codeForRange } from '../../shared/line-map'
 import { definitionKind } from '../../shared/symbols'
 import { useProjectInfo } from '../hooks/use-project'
@@ -16,6 +17,7 @@ import { useTheme } from '../lib/preferences'
 import { useSettings } from '../lib/settings'
 import { useSymbolSearch } from '../lib/symbols'
 import { IconButton, WithTooltip } from './ui/button'
+import { Spinner } from './ui/spinner'
 
 const WIDTH = 440
 const GAP = 6
@@ -277,7 +279,7 @@ export function SymbolPopover({ request, mrRef, sha, projectUrl, files, repoPath
       role="dialog"
       aria-label={`Definition and references of ${request.name}`}
       style={{ left: position.left, top: position.top, bottom: position.bottom, width: WIDTH, maxHeight: position.maxHeight }}
-      className={css({ position: 'fixed', zIndex: 'popover', display: 'flex', flexDir: 'column', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', boxShadow: 'popover', overflow: 'hidden' })}
+      className={cx(card({ floating: true, ornate: true }), css({ position: 'fixed', zIndex: 'popover', display: 'flex', flexDir: 'column', overflow: 'hidden' }))}
     >
       <div className={css({ flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: '2', pl: '4', pr: '2', pt: '3', pb: '3' })}>
         <div className={css({ flex: '1', minW: '0', pt: '1' })}>
@@ -289,8 +291,8 @@ export function SymbolPopover({ request, mrRef, sha, projectUrl, files, repoPath
 
       <div className={css({ flex: '1', minH: '0', overflowY: 'auto' })}>
         {search.isPending && (
-          <div className={cx(sectionHeader, css({ color: 'fg.muted', '& svg': { w: '4', h: '4', animation: 'spin' } }))}>
-            <Loader2 />
+          <div className={cx(sectionHeader, css({ color: 'fg.muted', '& svg': { w: '4', h: '4' } }))}>
+            <Spinner />
             {repoPath ? 'Searching the repository…' : 'Searching the changed lines…'}
           </div>
         )}

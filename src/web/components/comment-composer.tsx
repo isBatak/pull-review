@@ -1,6 +1,7 @@
 import { Tabs } from '@ark-ui/react/tabs'
 import { useState } from 'react'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
+import { input } from 'styled-system/recipes'
 import { Button } from './ui/button'
 import { Markdown } from './ui/markdown'
 
@@ -16,23 +17,7 @@ const tabTrigger = css({
   _selected: { color: 'fg.default', borderColor: 'accent.default' },
 })
 
-const textarea = css({
-  display: 'block',
-  w: 'full',
-  minH: '20',
-  p: '2.5',
-  fontSize: 'sm',
-  fontFamily: 'body',
-  bg: 'bg.surface',
-  color: 'fg.default',
-  borderWidth: '1px',
-  borderColor: 'border.default',
-  borderRadius: 'md',
-  resize: 'vertical',
-  outline: 'none',
-  _focus: { borderColor: 'accent.default', boxShadow: '0 0 0 1px token(colors.accent.default)' },
-  _placeholder: { color: 'fg.subtle' },
-})
+const textarea = cx(input({ multiline: true }), css({ minH: '20', fontFamily: 'body' }))
 
 interface CommentComposerProps {
   placeholder?: string

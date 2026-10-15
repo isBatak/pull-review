@@ -1,35 +1,23 @@
 import type { ComponentProps, ReactNode } from 'react'
-import type { ButtonVariantProps } from 'styled-system/recipes'
+import type { ButtonVariantProps, TooltipVariantProps } from 'styled-system/recipes'
 import { Tooltip } from '@ark-ui/react/tooltip'
 import { Portal } from '@ark-ui/react/portal'
-import { css, cx } from 'styled-system/css'
-import { button } from 'styled-system/recipes'
+import { cx } from 'styled-system/css'
+import { button, tooltip } from 'styled-system/recipes'
 
 type ButtonProps = ComponentProps<'button'> & ButtonVariantProps
 
-export function Button({ variant, size, iconOnly, className, type = 'button', ...props }: ButtonProps) {
-  return <button type={type} className={cx(button({ variant, size, iconOnly }), className)} {...props} />
+export function Button({ variant, size, iconOnly, frame, className, type = 'button', ...props }: ButtonProps) {
+  return <button type={type} className={cx(button({ variant, size, iconOnly, frame }), className)} {...props} />
 }
 
-const tooltipContent = css({
-  bg: 'fg.default',
-  color: 'bg.canvas',
-  fontSize: 'xs',
-  px: '2',
-  py: '1',
-  borderRadius: 'sm',
-  boxShadow: 'popover',
-  maxW: '64',
-  zIndex: 'tooltip',
-})
-
-export function WithTooltip({ label, children }: { label: ReactNode, children: ReactNode }) {
+export function WithTooltip({ label, rarity, children }: { label: ReactNode, children: ReactNode } & TooltipVariantProps) {
   return (
     <Tooltip.Root openDelay={300} closeDelay={0} positioning={{ placement: 'bottom' }}>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Portal>
         <Tooltip.Positioner>
-          <Tooltip.Content className={tooltipContent}>{label}</Tooltip.Content>
+          <Tooltip.Content className={tooltip({ rarity })}>{label}</Tooltip.Content>
         </Tooltip.Positioner>
       </Portal>
     </Tooltip.Root>

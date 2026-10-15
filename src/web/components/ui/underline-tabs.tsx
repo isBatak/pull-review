@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { css, cx } from 'styled-system/css'
+import { tab as tabRecipe } from 'styled-system/recipes'
 
 const numberFormat = new Intl.NumberFormat('en')
 
@@ -39,26 +40,7 @@ export function UnderlineTabs<T extends string>({ value, onChange, tabs, label, 
           role="tab"
           aria-selected={value === tab.value}
           onClick={() => onChange(tab.value)}
-          className={css({
-            position: 'relative',
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '2',
-            h: size === 'md' ? '10' : '8',
-            px: size === 'md' ? '3' : '2.5',
-            fontSize: size === 'md' ? 'sm' : 'xs',
-            fontWeight: 'medium',
-            color: 'fg.muted',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            outline: 'none',
-            borderRadius: 'md',
-            _hover: { color: 'fg.default' },
-            _focusVisible: { boxShadow: 'inset 0 0 0 2px token(colors.accent.default)' },
-            '&[aria-selected=true]': { color: 'fg.default' },
-            '&[aria-selected=true]::after': { content: '""', position: 'absolute', insetInline: '2', bottom: '-1px', h: '2px', borderRadius: 'full', bg: 'accent.default' },
-          })}
+          className={tabRecipe({ size })}
         >
           {tab.label}
           <TabCount value={tab.count} />

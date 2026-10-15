@@ -1,15 +1,21 @@
-import { LoaderCircle, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router'
 import { css } from 'styled-system/css'
 import { button } from 'styled-system/recipes'
+import { TavernLoadingScreen } from '../components/loading-screen'
 import { Button } from '../components/ui/button'
+import { Spinner } from '../components/ui/spinner'
+import { useThemeName } from '../lib/preferences'
 
 const center = css({ display: 'flex', flexDir: 'column', alignItems: 'center', justifyContent: 'center', gap: '3', minH: '100dvh', p: '6', textAlign: 'center' })
 
 export function LoadingState({ label }: { label: string }) {
+  const [themeName] = useThemeName()
+  if (themeName === 'tavern')
+    return <TavernLoadingScreen label={label} />
   return (
     <div className={center}>
-      <LoaderCircle className={css({ w: '6', h: '6', color: 'accent.default', animation: 'spin' })} />
+      <Spinner className={css({ w: '6', h: '6', color: 'accent.default' })} />
       <span className={css({ color: 'fg.muted', fontSize: 'sm' })}>{label}</span>
     </div>
   )
