@@ -1,8 +1,13 @@
 import type { SupportedLanguages } from '@pierre/diffs'
-import { getFiletypeFromFileName, getSharedHighlighter } from '@pierre/diffs'
+import { getFiletypeFromFileName, getSharedHighlighter, preloadHighlighter } from '@pierre/diffs'
 import { useEffect, useState } from 'react'
 
 export const GITHUB_THEMES = { light: 'github-light-default', dark: 'github-dark-default' } as const
+
+export function preloadDiffHighlighter() {
+  // A diff viewer outside the virtualized Code tab draws nothing if it mounts before the shared highlighter exists.
+  return preloadHighlighter({ themes: [GITHUB_THEMES.light, GITHUB_THEMES.dark], langs: [] })
+}
 
 export interface CodeToken {
   content: string
