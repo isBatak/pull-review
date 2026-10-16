@@ -215,7 +215,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
   const closeSymbol = useCallback(() => setSymbolRequest(null), [])
   const localRepo = useLocalRepo(mrRef)
   const tabParam = params.get('tab')
-  const localChanges = useLocalChanges(mrRef, localRepo.path, payload.mergeRequest.diffRefs.headSha)
+  const localChanges = useLocalChanges(mrRef, localRepo.path, payload.mergeRequest.diffRefs.headSha, payload.mergeRequest.sourceBranch)
   const localChangeCount = (localChanges.data?.files.length ?? 0) + (localChanges.data?.unpushed.length ?? 0)
   const tab: ReviewTab = tabParam === 'overview' || tabParam === 'bundle' || (tabParam === 'local' && localRepo.path) ? tabParam : 'code'
   const useGroupTabs = settings.groupLayout === 'tabs'
@@ -366,7 +366,14 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                               badge: unresolvedOverviewCount > 0 && <span aria-label={`${unresolvedOverviewCount} unresolved`} className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'accent.default' })} />,
                             },
                             { value: 'bundle', label: 'Bundle' },
-                            ...(localRepo.path ? [{ value: 'local' as const, label: 'Local changes', count: localChangeCount || null }] : []),
+                            ...(localRepo.path
+                            ? [{
+                                value: 'local' as const,
+                                label: 'Local changes',
+                                count: localChangeCount || null,
+                                badge: localChanges.data?.workspace?.belongs === false && <span aria-label="Your local repository is on another branch" title="Your local repository is on another branch" className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'warning.fg' })} />,
+                              }]
+                            : []),
                           ]}
                         />
                         {tab === 'code' && findingTargets.length > 0 && (

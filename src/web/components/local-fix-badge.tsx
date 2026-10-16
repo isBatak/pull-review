@@ -11,7 +11,7 @@ import { Button } from './ui/button'
 function useLocalState() {
   const { mergeRequest } = useReview()
   const localRepo = useLocalRepo(mergeRequest.ref)
-  const changes = useLocalChanges(mergeRequest.ref, localRepo.path, mergeRequest.diffRefs.headSha)
+  const changes = useLocalChanges(mergeRequest.ref, localRepo.path, mergeRequest.diffRefs.headSha, mergeRequest.sourceBranch)
   return { ranges: changes.data?.changedSinceHead, ...useLocalFixes(mergeRequest.ref) }
 }
 

@@ -23,7 +23,8 @@ const okTone = css({ color: 'fg.muted', bg: 'bg.muted' })
 const warnTone = css({ color: 'warning.fg', bg: 'warning.subtle' })
 
 function folderName(path: string) {
-  return path.slice(path.lastIndexOf('/') + 1)
+  const [parent = '', name = ''] = path.split('/').slice(-2)
+  return parent.endsWith('-mrs') ? `${parent}/${name}` : name
 }
 
 export function LocalCheckoutChip({ mrRef, headSha, onSetUp }: { mrRef: MrRef, headSha: string, onSetUp: () => void }) {

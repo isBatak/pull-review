@@ -1,3 +1,5 @@
+import type { MrRef } from './types'
+
 export interface LocalChangedFile {
   path: string
   previousPath: string | null
@@ -20,6 +22,25 @@ export interface LocalChanges {
   unpushed: UnpushedCommit[]
   truncated: boolean
   changedSinceHead: ChangedRanges | null
+  workspace?: LocalWorkspace
+}
+
+export interface LocalWorkspace {
+  branch: string | null
+  head: string | null
+  belongs: boolean
+  changedFiles: number
+  changedPaths: string[]
+  owner: MrRef | null
+  ownerTitle?: string | null
+}
+
+export function workspaceBelongs(input: { branch: string | null, mrBranch: string, containsMrHead: boolean }) {
+  return input.branch === input.mrBranch || (input.branch === null && input.containsMrHead)
+}
+
+export function describeWorkspace(workspace: Pick<LocalWorkspace, 'branch' | 'head'>) {
+  return workspace.branch ? `branch ${workspace.branch}` : `commit ${workspace.head?.slice(0, 8) ?? 'unknown'}`
 }
 
 export type ChangedRanges = Record<string, [number, number][]>

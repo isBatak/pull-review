@@ -1,13 +1,16 @@
 import type { CommitResult } from '../../shared/commit-plan'
-import type { LocalChangedFile, UnpushedCommit as UnpushedCommitSummary } from '../../shared/local-changes'
+import type { LocalChangedFile, LocalWorkspace, UnpushedCommit as UnpushedCommitSummary } from '../../shared/local-changes'
+import { Link } from 'react-router'
+import { describeWorkspace } from '../../shared/local-changes'
 import type { MrRef } from '../../shared/types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Eye, FileCheck2, GitCommitHorizontal, Loader2, RefreshCw, Undo2, Upload } from 'lucide-react'
+import { ArrowRight, Eye, FileCheck2, FolderGit2, FolderInput, FolderPlus, GitCommitHorizontal, Loader2, RefreshCw, Undo2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { api } from '../lib/api'
-import { localChangesKey, useLocalChanges } from '../lib/local-repos'
-import { mrKey } from '../../shared/mr-ref'
+import { localChangesKey, mrWorkspaceKey, useLocalChanges, useLocalRepo } from '../lib/local-repos'
+import { workspaceFolderFor } from '../../shared/local-repo'
+import { mrAppPath, mrKey } from '../../shared/mr-ref'
 import { CommitForm } from './commit-form'
 import { ChangesDialog } from './changes-dialog'
 import { PatchFileCard } from './patch-file-card'
@@ -72,10 +75,130 @@ function UnpushedCommit({ mrRef, repoPath, headSha, sha }: { mrRef: MrRef, repoP
   )
 }
 
+function useOwnFolder(mrRef: MrRef) {
+  const queryClient = useQueryClient()
+  const [state, setState] = useState<{ kind: 'idle' } | { kind: 'working' } | { kind: 'done', path: string, dependencies: string } | { kind: 'error', message: string }>({ kind: 'idle' })
+  async function create(repoPath: string, move: boolean) {
+    setState({ kind: 'working' })
+    try {
+      const created = await api.createMrWorkspace(mrRef, { repoPath, move })
+      setState({ kind: 'done', path: created.path, dependencies: created.dependencies })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: mrWorkspaceKey(mrRef) }),
+        queryClient.invalidateQueries({ queryKey: ['local-checkout', mrRef.host, mrRef.project, mrRef.iid] }),
+        queryClient.invalidateQueries({ queryKey: ['local-changes', mrRef.host, mrRef.project, mrRef.iid] }),
+      ])
+    }
+    catch (cause) {
+      setState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+    }
+  }
+  return { state, create }
+}
+
+function OwnFolderStatus({ state }: { state: ReturnType<typeof useOwnFolder>['state'] }) {
+  if (state.kind === 'working')
+    return <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', color: 'fg.muted' })}><Loader2 className={css({ animation: 'spin', w: '3.5', h: '3.5' })} /> Making the folder and copying dependencies. This can take a minute…</div>
+  if (state.kind === 'error')
+    return <div className={css({ fontSize: 'xs', color: 'danger.fg', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>{state.message}</div>
+  if (state.kind === 'done')
+    return <div className={css({ fontSize: 'xs', color: 'success.fg' })}>{`This merge request now uses ${state.path}. ${state.dependencies}`}</div>
+  return null
+}
+
+function WorkspaceGuard({ mrRef, repoPath, workspace, branch }: { mrRef: MrRef, repoPath: string, workspace: LocalWorkspace, branch: string }) {
+  const queryClient = useQueryClient()
+  const [switching, setSwitching] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const owner = workspace.owner && mrKey(workspace.owner) !== mrKey(mrRef) ? workspace.owner : null
+  const ownFolder = useOwnFolder(mrRef)
+  const files = workspace.changedFiles === 1 ? '1 changed file' : `${workspace.changedFiles} changed files`
+
+  async function switchHere() {
+    setSwitching(true)
+    setError(null)
+    try {
+      const result = await api.checkoutLocal(mrRef, repoPath)
+      if (result.status !== 'ready' && result.status !== 'detached')
+        setError(result.message)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['local-checkout', mrRef.host, mrRef.project, mrRef.iid] }),
+        queryClient.invalidateQueries({ queryKey: localChangesKey(mrRef, repoPath) }),
+      ])
+    }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+    finally {
+      setSwitching(false)
+    }
+  }
+
+  return (
+    <div role="status" className={css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', bg: 'warning.subtle', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', fontSize: 'sm' })}>
+      <div className={css({ display: 'flex', alignItems: 'center', gap: '2', fontWeight: 'semibold', color: 'warning.fg', '& svg': { w: '4', h: '4' } })}>
+        <FolderGit2 />
+        {owner ? `Your local repository is on !${owner.iid}` : 'Your local repository is on another branch'}
+        {owner && workspace.ownerTitle && <span className={css({ fontWeight: 'normal', color: 'fg.default', truncate: true, minW: '0' })}>{workspace.ownerTitle}</span>}
+      </div>
+      <p className={css({ color: 'fg.muted' })}>
+        <span className={css({ fontFamily: 'mono' })}>{repoPath}</span>
+        {' '}
+        is on
+        {' '}
+        <span className={css({ fontFamily: 'mono' })}>{describeWorkspace(workspace)}</span>
+        , not on this merge request's branch
+        {' '}
+        <span className={css({ fontFamily: 'mono' })}>{branch}</span>
+        .
+        {' '}
+        {workspace.changedFiles
+          ? `Its ${files} ${workspace.changedFiles === 1 ? 'belongs' : 'belong'} to that ${owner ? 'merge request' : 'branch'}, so ${workspace.changedFiles === 1 ? 'it is' : 'they are'} hidden here, and Pull Review won't apply, commit or discard anything in this folder from this merge request.`
+          : 'It has no uncommitted changes, so it can switch to this merge request.'}
+      </p>
+      {workspace.changedPaths.length > 0 && (
+        <ul aria-label="Changed files in that folder" className={css({ display: 'flex', flexDir: 'column', gap: '1', p: '2.5', fontFamily: 'mono', fontSize: 'xs', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md' })}>
+          {workspace.changedPaths.map(path => <li key={path} className={css({ truncate: true })} title={path}>{path}</li>)}
+          {workspace.changedFiles > workspace.changedPaths.length && (
+            <li className={css({ fontFamily: 'body', color: 'fg.subtle' })}>and {workspace.changedFiles - workspace.changedPaths.length} more</li>
+          )}
+        </ul>
+      )}
+      <div className={css({ display: 'flex', alignItems: 'center', gap: '2', flexWrap: 'wrap' })}>
+        {workspace.changedFiles === 0 && (
+          <Button size="sm" variant="solid" disabled={switching} onClick={() => void switchHere()}>
+            {switching ? <Loader2 className={css({ animation: 'spin' })} /> : <RefreshCw />}
+            Switch to this merge request
+          </Button>
+        )}
+        <Button size="sm" disabled={ownFolder.state.kind === 'working'} onClick={() => void ownFolder.create(repoPath, false)} title={`Makes ${workspaceFolderFor(repoPath, mrRef)} on this merge request's branch. The shared folder and its changes stay as they are.`}>
+          <FolderPlus />
+          Create a folder for this merge request
+        </Button>
+        {owner && (
+          <Link to={`${mrAppPath(owner)}?tab=local`} className={css({ display: 'inline-flex', alignItems: 'center', gap: '1.5', h: '7', px: '2.5', fontSize: 'xs', fontWeight: 'medium', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', bg: 'bg.surface', _hover: { bg: 'bg.muted' }, '& svg': { w: '3.5', h: '3.5' } })}>
+            <ArrowRight />
+            {workspace.changedFiles ? `Resolve them in !${owner.iid}` : `Open !${owner.iid}`}
+          </Link>
+        )}
+        {workspace.changedFiles > 0 && (
+          <span className={css({ fontSize: 'xs', color: 'fg.muted' })}>
+            Commit, push or discard those changes {owner ? `in !${owner.iid}` : 'first'}, then come back to switch.
+          </span>
+        )}
+      </div>
+      <OwnFolderStatus state={ownFolder.state} />
+      {error && <div className={css({ fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
+    </div>
+  )
+}
+
 export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath: string }) {
   const queryClient = useQueryClient()
   const { mergeRequest } = useReview()
-  const changes = useLocalChanges(mrRef, repoPath, mergeRequest.diffRefs.headSha)
+  const changes = useLocalChanges(mrRef, repoPath, mergeRequest.diffRefs.headSha, mergeRequest.sourceBranch)
+  const localRepo = useLocalRepo(mrRef)
+  const ownFolder = useOwnFolder(mrRef)
   const [busy, setBusy] = useState(false)
   const [committing, setCommitting] = useState(false)
   const [pushing, setPushing] = useState(false)
@@ -137,6 +260,10 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
     }
   }
 
+  const workspace = changes.data?.workspace
+  if (workspace && !workspace.belongs)
+    return <WorkspaceGuard mrRef={mrRef} repoPath={changes.data!.path} workspace={workspace} branch={branch} />
+
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
       <div className={css({ display: 'flex', alignItems: 'center', gap: '3', flexWrap: 'wrap' })}>
@@ -155,6 +282,18 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
           <RefreshCw className={changes.isFetching ? css({ animation: 'spin' }) : undefined} />
           Refresh
         </Button>
+        {!localRepo.ownFolder && (files.length > 0 || unpushed.length > 0) && !committing && (
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={busy || ownFolder.state.kind === 'working'}
+            onClick={() => void ownFolder.create(repoPath, true)}
+            title={`Moves your uncommitted changes and unpushed commits to ${workspaceFolderFor(repoPath, mrRef)}, so the shared folder is free for other merge requests.`}
+          >
+            <FolderInput />
+            Move to its own folder
+          </Button>
+        )}
         {files.length > 0 && !committing && (
           <Button size="xs" variant="solid" disabled={busy} onClick={() => { setCommitting(true); setNotice(null) }}>
             <GitCommitHorizontal />
@@ -170,6 +309,7 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
               </Button>
             ))}
       </div>
+      <OwnFolderStatus state={ownFolder.state} />
       {notice && <div className={css({ fontSize: 'sm', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })} style={{ color: notice.tone === 'error' ? 'var(--colors-danger-fg)' : 'var(--colors-success-fg)' }}>{notice.text}</div>}
       {unpushed.length > 0 && (
         <div className={css({ display: 'flex', flexDir: 'column', gap: '2', p: '3', bg: 'warning.subtle', borderRadius: 'lg', fontSize: 'sm' })}>

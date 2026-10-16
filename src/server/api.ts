@@ -16,6 +16,9 @@ import { discardLocalChanges, readLocalChanges } from './local/changes'
 import { commitLocalChanges, pushLocalCommits, readUnpushedCommit } from './local/commits'
 import { applyPatch } from './local/patch'
 import { createLocalFixStore } from './local/fixes'
+import { createWorkspaceOwners, ensureBelongs, readWorkspace } from './local/workspace-guard'
+import { createMrWorkspaces } from './local/mr-workspaces'
+import type { LocalChanges } from '../shared/local-changes'
 import { readLocalFix } from '../shared/local-changes'
 import { createRepoLinks } from './local/repo-link'
 import { grepSymbol } from './local/symbols'
@@ -46,6 +49,7 @@ export interface LocalRepo {
 type Env = { Variables: { client: GitlabClient, projectClient: ReturnType<typeof createGitlabProjectClient> } }
 
 const LIST_STATES = new Set<MrListState>(['opened', 'merged', 'closed', 'all'])
+const BRANCH_OWNER_TTL_MS = 5 * 60_000
 const MAX_LIST_LIMIT = 500
 
 function readProjectRef(c: Context): ProjectRef | null {
@@ -116,6 +120,20 @@ export function createApi(options: ApiOptions) {
   const gitTools = host ? createGitTools(host) : null
   const repoLinks = host && gitTools ? createRepoLinks(host, gitTools) : null
   const localFixes = host ? createLocalFixStore(host) : null
+  const owners = host ? createWorkspaceOwners(host) : null
+  const branchOwners = new Map<string, { at: number, found: { iid: number, title: string } | null }>()
+
+  async function mergeRequestForBranch(projectClient: ReturnType<typeof createGitlabProjectClient>, ref: MrRef, branch: string) {
+    const key = `${ref.host}/${ref.project}#${branch}`
+    const cached = branchOwners.get(key)
+    if (cached && Date.now() - cached.at < BRANCH_OWNER_TTL_MS)
+      return cached.found
+    const summary = await projectClient.mergeRequestForBranch(branch).catch(() => null)
+    const found = summary ? { iid: summary.iid, title: summary.title } : null
+    branchOwners.set(key, { at: Date.now(), found })
+    return found
+  }
+  const mrWorkspaces = host && gitTools && repoLinks && owners ? createMrWorkspaces(host, gitTools, repoLinks, owners) : null
 
   api.post('/local/inspect', async (c) => {
     if (!repoLinks)
@@ -167,6 +185,7 @@ export function createApi(options: ApiOptions) {
     if (!token)
       return c.json({ error: tokenHelp(ref.host), code: 'missing-token' }, 401)
     c.set('client', createGitlabClient(ref, token.token))
+    c.set('projectClient', createGitlabProjectClient(ref, token.token))
     await next()
   })
 
@@ -337,7 +356,24 @@ export function createApi(options: ApiOptions) {
     if (!repoPath)
       return c.json({ error: 'Expected repoPath' }, 400)
     const mergeRequest = await c.var.client.mergeRequest()
-    return c.json(await repoLinks.checkout(repoPath, readRef(c)!, mergeRequest.sourceBranch, mergeRequest.diffRefs.headSha))
+    const result = await repoLinks.checkout(repoPath, readRef(c)!, mergeRequest.sourceBranch, mergeRequest.diffRefs.headSha)
+    if (result.status === 'ready' || result.status === 'detached')
+      await owners?.remember(result.path, { ref: readRef(c)!, branch: mergeRequest.sourceBranch, sha: mergeRequest.diffRefs.headSha }).catch(() => null)
+    return c.json(result)
+  })
+
+  api.get('/mr/local/workspace', async (c) => {
+    return c.json({ path: mrWorkspaces ? await mrWorkspaces.get(readRef(c)!) : null })
+  })
+
+  api.post('/mr/local/workspace', async (c) => {
+    if (!mrWorkspaces)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath, move } = await c.req.json<{ repoPath?: string, move?: boolean }>()
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    const mr = await mergeRequestBranch(c.var.client)
+    return c.json(await mrWorkspaces.create(readRef(c)!, repoPath, mr, move === true))
   })
 
   api.get('/mr/local/changes', async (c) => {
@@ -346,7 +382,22 @@ export function createApi(options: ApiOptions) {
     const repoPath = c.req.query('repoPath') ?? ''
     if (!repoPath)
       return c.json({ error: 'Expected repoPath' }, 400)
-    return c.json(await readLocalChanges(gitTools, readRef(c)!, repoPath, c.req.query('headSha') ?? ''))
+    const headSha = c.req.query('headSha') ?? ''
+    const branch = c.req.query('branch') ?? ''
+    if (!branch)
+      return c.json(await readLocalChanges(gitTools, readRef(c)!, repoPath, headSha))
+    const repo = await gitTools.openRepository(repoPath, readRef(c)!)
+    const workspace = await readWorkspace(gitTools, repo.path, { branch, headSha }, owners)
+    if (!workspace.belongs && workspace.branch) {
+      const found = await mergeRequestForBranch(c.var.projectClient, readRef(c)!, workspace.branch)
+      if (found && (!workspace.owner || workspace.owner.iid === found.iid)) {
+        workspace.owner = { host: readRef(c)!.host, project: readRef(c)!.project, iid: found.iid }
+        workspace.ownerTitle = found.title
+      }
+    }
+    if (!workspace.belongs)
+      return c.json({ path: repo.path, files: [], unpushed: [], truncated: false, changedSinceHead: null, workspace } satisfies LocalChanges)
+    return c.json({ ...await readLocalChanges(gitTools, readRef(c)!, repo.path, headSha), workspace })
   })
 
   api.post('/mr/local/discard', async (c) => {
@@ -355,6 +406,7 @@ export function createApi(options: ApiOptions) {
     const { repoPath, paths } = await c.req.json<{ repoPath: string, paths: string[] | null }>()
     if (!repoPath || (paths !== null && (!Array.isArray(paths) || paths.some(path => typeof path !== 'string'))))
       return c.json({ error: 'Expected repoPath and paths' }, 400)
+    await ensureBelongs(gitTools, readRef(c)!, repoPath, await mergeRequestBranch(c.var.client))
     return c.json(await discardLocalChanges(host, gitTools, readRef(c)!, repoPath, paths))
   })
 
@@ -370,6 +422,7 @@ export function createApi(options: ApiOptions) {
     if (!input.repoPath)
       return c.json({ error: 'Expected repoPath' }, 400)
     const mr = await mergeRequestBranch(c.var.client)
+    await ensureBelongs(gitTools!, readRef(c)!, input.repoPath, mr)
     return c.json(await options.chat.planCommits(readRef(c)!, { repoPath: input.repoPath, model: String(input.model ?? ''), effort: String(input.effort ?? ''), title: mr.title, branch: mr.branch }))
   })
 
@@ -380,7 +433,9 @@ export function createApi(options: ApiOptions) {
     const commitsValid = Array.isArray(input.commits) && input.commits.every(commit => typeof commit?.message === 'string' && Array.isArray(commit.files) && commit.files.every(file => typeof file === 'string'))
     if (!input.repoPath || !commitsValid)
       return c.json({ error: 'Expected repoPath and commits' }, 400)
-    return c.json(await commitLocalChanges(host!, gitTools, readRef(c)!, input.repoPath, await mergeRequestBranch(c.var.client), {
+    const mr = await mergeRequestBranch(c.var.client)
+    await ensureBelongs(gitTools, readRef(c)!, input.repoPath, mr)
+    return c.json(await commitLocalChanges(host!, gitTools, readRef(c)!, input.repoPath, mr, {
       commits: input.commits,
       push: input.push === true,
       skipHooks: input.skipHooks === true,
@@ -404,7 +459,9 @@ export function createApi(options: ApiOptions) {
     const { repoPath } = await c.req.json<{ repoPath: string }>()
     if (!repoPath)
       return c.json({ error: 'Expected repoPath' }, 400)
-    return c.json(await pushLocalCommits(gitTools, readRef(c)!, repoPath, await mergeRequestBranch(c.var.client)))
+    const mr = await mergeRequestBranch(c.var.client)
+    await ensureBelongs(gitTools, readRef(c)!, repoPath, mr)
+    return c.json(await pushLocalCommits(gitTools, readRef(c)!, repoPath, mr))
   })
 
   api.post('/mr/local/apply-patch', async (c) => {
@@ -413,6 +470,7 @@ export function createApi(options: ApiOptions) {
     const { repoPath, patch } = await c.req.json<{ repoPath: string, patch: string }>()
     if (!repoPath || !patch?.trim())
       return c.json({ error: 'Expected repoPath and patch' }, 400)
+    await ensureBelongs(gitTools, readRef(c)!, repoPath, await mergeRequestBranch(c.var.client))
     return c.json(await applyPatch(host, gitTools, readRef(c)!, repoPath, patch))
   })
 

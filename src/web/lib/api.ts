@@ -1,3 +1,4 @@
+import type { CreatedWorkspace } from '../../shared/local-repo'
 import type { CommitDetails, FixTarget, LocalFix } from '../../shared/local-changes'
 import type {
   Approvals,
@@ -100,7 +101,9 @@ export const api = {
   inspectLocalFolder: (input: { path: string, project: string }) => call<LocalFolderInfo>(null, '/local/inspect', { method: 'POST', body: input }),
   createLocalWorktree: (input: { sourcePath: string, targetPath: string, project: string }) =>
     call<{ path: string }>(null, '/local/worktree', { method: 'POST', body: input }),
-  localChanges: (ref: MrRef, repoPath: string, headSha: string) => call<LocalChanges>(ref, '/mr/local/changes', { query: { repoPath, headSha } }),
+  mrWorkspace: (ref: MrRef) => call<{ path: string | null }>(ref, '/mr/local/workspace'),
+  createMrWorkspace: (ref: MrRef, input: { repoPath: string, move: boolean }) => call<CreatedWorkspace>(ref, '/mr/local/workspace', { method: 'POST', body: input }),
+  localChanges: (ref: MrRef, repoPath: string, headSha: string, branch: string) => call<LocalChanges>(ref, '/mr/local/changes', { query: { repoPath, headSha, branch } }),
   planCommits: (ref: MrRef, input: CommitPlanInput) => call<CommitPlan>(ref, '/mr/local/commit-plan', { method: 'POST', body: input }),
   commitLocalChanges: (ref: MrRef, input: { repoPath: string, commits: PlannedCommit[], push: boolean, skipHooks: boolean }) =>
     call<CommitResult>(ref, '/mr/local/commit', { method: 'POST', body: input }),

@@ -156,6 +156,16 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
       }
     },
 
+    async mergeRequestForBranch(branch: string): Promise<MrSummary | null> {
+      for (const state of ['opened', 'all'] as const) {
+        const params = mrQuery(state, { source_branch: branch, per_page: '1' })
+        const found = await json<RawMrSummary[]>(`${projectPath}/merge_requests?${params}`)
+        if (found[0])
+          return normalizeMrSummary(found[0])
+      }
+      return null
+    },
+
     async counts(authorIds?: number[]): Promise<MrCounts> {
       const states: MrListState[] = ['opened', 'merged', 'closed', 'all']
       const authors = authorIds?.length ? authorIds : [null]

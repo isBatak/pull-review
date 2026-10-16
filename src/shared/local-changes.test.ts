@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fixFor, hasLocalChanges, parseChangedRanges, readLocalFix, withFix, withoutFix } from './local-changes'
+import { describeWorkspace, fixFor, hasLocalChanges, parseChangedRanges, readLocalFix, withFix, withoutFix, workspaceBelongs } from './local-changes'
 
 const patch = [
   'diff --git a/src/a.ts b/src/a.ts',
@@ -56,5 +56,19 @@ describe('local fixes', () => {
     expect(readLocalFix({ discussionIds: ['d1', 3], paths: 'x', manual: true })).toMatchObject({ discussionIds: ['d1'], findingIds: [], paths: [], manual: true })
     expect(readLocalFix({ discussionIds: [] })).toBeNull()
     expect(readLocalFix('nope')).toBeNull()
+  })
+})
+
+describe('workspaceBelongs', () => {
+  it('belongs on the merge request branch, or detached on top of its latest commit', () => {
+    expect(workspaceBelongs({ branch: 'feat/a', mrBranch: 'feat/a', containsMrHead: false })).toBe(true)
+    expect(workspaceBelongs({ branch: null, mrBranch: 'feat/a', containsMrHead: true })).toBe(true)
+    expect(workspaceBelongs({ branch: 'feat/b', mrBranch: 'feat/a', containsMrHead: true })).toBe(false)
+    expect(workspaceBelongs({ branch: null, mrBranch: 'feat/a', containsMrHead: false })).toBe(false)
+  })
+
+  it('names the branch, or the commit when no branch is checked out', () => {
+    expect(describeWorkspace({ branch: 'feat/b', head: 'abc' })).toBe('branch feat/b')
+    expect(describeWorkspace({ branch: null, head: '1234567890' })).toBe('commit 12345678')
   })
 })

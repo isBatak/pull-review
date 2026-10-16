@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.9 (2026-10-16)
+
+- When your local repository is on another merge request's branch, the Local changes tab says so instead of showing that branch's changes, and offers to switch when the folder is clean.
+- Pull Review no longer applies patches, commits, pushes or discards in a folder that is on another branch.
+- The warning names the merge request that owns the folder, lists its changed files, and links to its Local changes tab to resolve them.
+- Give a merge request its own folder with "Create a folder for this merge request", or "Move to its own folder" to take its changes and unpushed commits out of the shared folder. Its chat, local changes, editor and commits then use that folder. On macOS, node_modules is copied instantly, so git hooks work right away.
+
 ## 0.2.8 (2026-10-16)
 
 ### Fixing review comments
