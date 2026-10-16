@@ -175,7 +175,6 @@ export function createReviewRunner(deps: ReviewRunnerDeps): ReviewRunner {
       await host.writeFile(promptFile, buildReviewPrompt(workspace.title))
 
       const progress: ChatMessage = { id: 'review', role: 'assistant', text: '', contexts: [], tools: state.tools, status: 'streaming', error: null }
-      const pathPrefixes = [workspace.worktreeDir, workspace.contextDir].filter((dir): dir is string => Boolean(dir))
       let result: unknown = null
       const process = host.stream([
         binary,
@@ -208,7 +207,7 @@ export function createReviewRunner(deps: ReviewRunnerDeps): ReviewRunner {
             }
             catch {}
           }
-          if (applyStreamLine(progress, line, pathPrefixes).changed)
+          if (applyStreamLine(progress, line, { repo: workspace.worktreeDir, context: workspace.contextDir }).changed)
             changed(session)
         },
       })

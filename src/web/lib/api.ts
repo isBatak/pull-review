@@ -1,3 +1,4 @@
+import type { CommitDetails, FixTarget, LocalFix } from '../../shared/local-changes'
 import type {
   Approvals,
   BundleArtifacts,
@@ -106,8 +107,12 @@ export const api = {
   pushLocalCommits: (ref: MrRef, repoPath: string) => call<{ pushed: boolean }>(ref, '/mr/local/push', { method: 'POST', body: { repoPath } }),
   discardLocalChanges: (ref: MrRef, repoPath: string, paths: string[] | null) =>
     call<{ discarded: string[] }>(ref, '/mr/local/discard', { method: 'POST', body: { repoPath, paths } }),
+  unpushedCommit: (ref: MrRef, repoPath: string, headSha: string, sha: string) => call<CommitDetails>(ref, '/mr/local/commit', { query: { repoPath, headSha, sha } }),
+  localFixes: (ref: MrRef) => call<LocalFix[]>(ref, '/mr/local/fixes'),
+  addLocalFixes: (ref: MrRef, fixes: LocalFix[]) => call<LocalFix[]>(ref, '/mr/local/fixes', { method: 'POST', body: { fixes } }),
+  removeLocalFix: (ref: MrRef, target: FixTarget) => call<LocalFix[]>(ref, '/mr/local/fixes/remove', { method: 'POST', body: target }),
   applyPatch: (ref: MrRef, repoPath: string, patch: string) =>
-    call<{ path: string, files: string[] }>(ref, '/mr/local/apply-patch', { method: 'POST', body: { repoPath, patch } }),
+    call<{ path: string, files: string[], alreadyApplied: boolean }>(ref, '/mr/local/apply-patch', { method: 'POST', body: { repoPath, patch } }),
   checkoutLocal: (ref: MrRef, repoPath: string) => call<LocalCheckout>(ref, '/mr/local/checkout', { method: 'POST', body: { repoPath } }),
   editorStatus: () => call<{ detected: string | null, installed: string[] }>(null, '/editor'),
   openInEditor: (input: { repoPath: string, path: string, line: number, column: number, editor: string }) =>

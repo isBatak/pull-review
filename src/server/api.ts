@@ -13,8 +13,10 @@ import { EditorError, editorStatus, openInEditor } from './local/editor'
 import { createGitTools, expandHome, GitError } from './local/git'
 import type { CommitPlanInput, PlannedCommit } from '../shared/commit-plan'
 import { discardLocalChanges, readLocalChanges } from './local/changes'
-import { commitLocalChanges, pushLocalCommits } from './local/commits'
+import { commitLocalChanges, pushLocalCommits, readUnpushedCommit } from './local/commits'
 import { applyPatch } from './local/patch'
+import { createLocalFixStore } from './local/fixes'
+import { readLocalFix } from '../shared/local-changes'
 import { createRepoLinks } from './local/repo-link'
 import { grepSymbol } from './local/symbols'
 import { isSearchableSymbol } from '../shared/symbols'
@@ -113,6 +115,7 @@ export function createApi(options: ApiOptions) {
   const host = options.host
   const gitTools = host ? createGitTools(host) : null
   const repoLinks = host && gitTools ? createRepoLinks(host, gitTools) : null
+  const localFixes = host ? createLocalFixStore(host) : null
 
   api.post('/local/inspect', async (c) => {
     if (!repoLinks)
@@ -377,11 +380,22 @@ export function createApi(options: ApiOptions) {
     const commitsValid = Array.isArray(input.commits) && input.commits.every(commit => typeof commit?.message === 'string' && Array.isArray(commit.files) && commit.files.every(file => typeof file === 'string'))
     if (!input.repoPath || !commitsValid)
       return c.json({ error: 'Expected repoPath and commits' }, 400)
-    return c.json(await commitLocalChanges(gitTools, readRef(c)!, input.repoPath, await mergeRequestBranch(c.var.client), {
+    return c.json(await commitLocalChanges(host!, gitTools, readRef(c)!, input.repoPath, await mergeRequestBranch(c.var.client), {
       commits: input.commits,
       push: input.push === true,
       skipHooks: input.skipHooks === true,
     }))
+  })
+
+  api.get('/mr/local/commit', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const repoPath = c.req.query('repoPath') ?? ''
+    const headSha = c.req.query('headSha') ?? ''
+    const sha = c.req.query('sha') ?? ''
+    if (!repoPath || !/^[0-9a-f]{7,64}$/i.test(headSha) || !/^[0-9a-f]{40,64}$/i.test(sha))
+      return c.json({ error: 'Expected repoPath, headSha and sha' }, 400)
+    return c.json(await readUnpushedCommit(gitTools, readRef(c)!, repoPath, headSha, sha))
   })
 
   api.post('/mr/local/push', async (c) => {
@@ -400,6 +414,34 @@ export function createApi(options: ApiOptions) {
     if (!repoPath || !patch?.trim())
       return c.json({ error: 'Expected repoPath and patch' }, 400)
     return c.json(await applyPatch(host, gitTools, readRef(c)!, repoPath, patch))
+  })
+
+  api.get('/mr/local/fixes', async (c) => {
+    if (!localFixes)
+      return c.json([])
+    return c.json(await localFixes.list(readRef(c)!))
+  })
+
+  api.post('/mr/local/fixes', async (c) => {
+    if (!localFixes)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { fixes } = await c.req.json<{ fixes: unknown[] }>()
+    const valid = Array.isArray(fixes) ? fixes.flatMap(fix => readLocalFix(fix) ?? []) : []
+    if (!valid.length)
+      return c.json({ error: 'Expected at least one fix with a thread or a finding' }, 400)
+    return c.json(await localFixes.add(readRef(c)!, valid))
+  })
+
+  api.post('/mr/local/fixes/remove', async (c) => {
+    if (!localFixes)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { discussionId, findingId } = await c.req.json<{ discussionId?: unknown, findingId?: unknown }>()
+    if (typeof discussionId !== 'string' && typeof findingId !== 'string')
+      return c.json({ error: 'Expected discussionId or findingId' }, 400)
+    return c.json(await localFixes.remove(readRef(c)!, {
+      discussionId: typeof discussionId === 'string' ? discussionId : undefined,
+      findingId: typeof findingId === 'string' ? findingId : undefined,
+    }))
   })
 
   api.get('/mr/symbols', async (c) => {

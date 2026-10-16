@@ -176,6 +176,10 @@ export function planSuggestions(files: PatchFile[], targetFor: (path: string) =>
   return plan
 }
 
+export function patchHasChanges(patch: string) {
+  return parseUnifiedPatch(patch).some(file => file.hunks.some(hunk => hunk.lines.some(line => line.kind !== ' ')))
+}
+
 const SUGGESTION_LANGUAGE = /^suggestion(?::-(\d+)\+(\d+))?$/
 
 export function parseSuggestionRange(language: string | null) {

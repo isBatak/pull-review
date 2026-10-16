@@ -340,6 +340,7 @@ export function findingComment(finding: ReviewFinding, file: DiffFile): NewDiffC
 
 export function findingAsChatThread(finding: ReviewFinding): ChatThread {
   return {
+    findingId: finding.id,
     side: finding.side,
     line: finding.endLine,
     resolved: false,

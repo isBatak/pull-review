@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../shared/chat'
+import type { ChatMessage, ChatToolRoot, ChatToolUse } from '../../shared/chat'
 
 interface ContentBlock {
   type: string
@@ -23,14 +23,40 @@ interface StreamLine {
 }
 
 const DETAIL_KEYS = ['file_path', 'pattern', 'path'] as const
+const PATH_KEYS = new Set<string>(['file_path', 'path'])
 
-function toolDetail(input: Record<string, unknown> | undefined): string | null {
+export interface ToolRoots {
+  repo?: string | null
+  context?: string | null
+}
+
+function rawDetail(input: Record<string, unknown> | undefined) {
   for (const key of DETAIL_KEYS) {
     const value = input?.[key]
     if (typeof value === 'string' && value)
-      return value
+      return { value, isPath: PATH_KEYS.has(key) }
   }
   return null
+}
+
+function within(path: string, dir: string | null | undefined) {
+  return dir && path.startsWith(`${dir}/`) ? path.slice(dir.length + 1) : null
+}
+
+export function describeToolInput(input: Record<string, unknown> | undefined, roots: ToolRoots): Pick<ChatToolUse, 'detail' | 'root' | 'line'> {
+  const raw = rawDetail(input)
+  if (!raw)
+    return { detail: null, root: null, line: null }
+  const offset = input?.offset
+  const line = typeof offset === 'number' && offset > 0 ? Math.floor(offset) : null
+  if (!raw.isPath)
+    return { detail: raw.value, root: null, line: null }
+  for (const root of ['repo', 'context'] as ChatToolRoot[]) {
+    const relative = within(raw.value, roots[root])
+    if (relative)
+      return { detail: relative, root, line }
+  }
+  return { detail: raw.value, root: null, line }
 }
 
 export interface StreamOutcome {
@@ -38,20 +64,13 @@ export interface StreamOutcome {
   finished: boolean
 }
 
-export function applyStreamLine(message: ChatMessage, raw: string, pathPrefixes: string[] = []): StreamOutcome {
+export function applyStreamLine(message: ChatMessage, raw: string, roots: ToolRoots = {}): StreamOutcome {
   let line: StreamLine
   try {
     line = JSON.parse(raw) as StreamLine
   }
   catch {
     return { changed: false, finished: false }
-  }
-
-  const stripPrefix = (detail: string | null) => {
-    if (!detail)
-      return null
-    const prefix = pathPrefixes.find(candidate => detail.startsWith(`${candidate}/`))
-    return prefix ? detail.slice(prefix.length + 1) : detail
   }
 
   if (line.type === 'stream_event') {
@@ -77,13 +96,13 @@ export function applyStreamLine(message: ChatMessage, raw: string, pathPrefixes:
       if (block.type !== 'tool_use' || !block.id)
         continue
       const tool = message.tools.find(item => item.id === block.id)
-      const detail = stripPrefix(toolDetail(block.input))
-      if (tool && tool.detail !== detail) {
-        tool.detail = detail
+      const described = describeToolInput(block.input, roots)
+      if (tool && (tool.detail !== described.detail || tool.root !== described.root || tool.line !== described.line)) {
+        Object.assign(tool, described)
         changed = true
       }
       else if (!tool) {
-        message.tools.push({ id: block.id, name: block.name ?? 'Tool', detail })
+        message.tools.push({ id: block.id, name: block.name ?? 'Tool', ...described })
         changed = true
       }
     }

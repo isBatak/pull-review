@@ -1,13 +1,33 @@
-import type { ChatToolUse } from './chat'
+import type { ChatToolRoot, ChatToolUse } from './chat'
 
 export type ThinkingStepKind = 'search' | 'read' | 'write' | 'post' | 'other'
+
+export interface ThinkingItem {
+  text: string
+  root: ChatToolRoot | null
+  line: number | null
+}
 
 export interface ThinkingStep {
   id: string
   kind: ThinkingStepKind
   doneLabel: string
   activeLabel: string
-  items: string[]
+  items: ThinkingItem[]
+}
+
+const CONTEXT_FILE = /^(?:merge-request\.md|discussions\.md|changes\.diff|diffs\/.+\.diff)$/
+
+function rootOf(tool: ChatToolUse): ChatToolRoot | null {
+  if (tool.root !== undefined)
+    return tool.root
+  if (!tool.detail || tool.detail.startsWith('/') || !['Read', 'Glob'].includes(tool.name))
+    return null
+  return CONTEXT_FILE.test(tool.detail) ? 'context' : 'repo'
+}
+
+function itemOf(tool: ChatToolUse): ThinkingItem {
+  return { text: tool.detail!, root: tool.name === 'Read' ? rootOf(tool) : null, line: tool.line ?? null }
 }
 
 const SEARCH_TOOLS = new Set(['Grep', 'Glob'])
@@ -42,7 +62,7 @@ function labelled(step: Omit<ThinkingStep, 'doneLabel' | 'activeLabel'>, tool: C
 
 export function stepsFromTools(tools: ChatToolUse[], writeLabel = 'the answer'): ThinkingStep[] {
   const steps: ThinkingStep[] = []
-  let last: { kind: ThinkingStepKind, items: string[], tool: ChatToolUse, id: string } | null = null
+  let last: { kind: ThinkingStepKind, items: ThinkingItem[], tool: ChatToolUse, id: string } | null = null
   const flush = () => {
     if (last)
       steps.push(labelled({ id: last.id, kind: last.kind, items: last.items }, last.tool, writeLabel))
@@ -53,8 +73,8 @@ export function stepsFromTools(tools: ChatToolUse[], writeLabel = 'the answer'):
       flush()
       last = { kind, items: [], tool, id: tool.id }
     }
-    if (tool.detail && kind !== 'write' && !last.items.includes(tool.detail))
-      last.items.push(tool.detail)
+    if (tool.detail && kind !== 'write' && !last.items.some(item => item.text === tool.detail))
+      last.items.push(itemOf(tool))
   }
   flush()
   return steps

@@ -9,12 +9,13 @@ import { mrKey } from '../../shared/mr-ref'
 import { applyStreamLine, explainExit } from './claude-events'
 import { findExecutable } from '../local/host'
 import { expandHome } from '../local/git'
-import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan } from '../../shared/commit-plan'
+import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan, splitInfo } from '../../shared/commit-plan'
 import { readLocalChanges } from '../local/changes'
 import { createGitTools } from '../local/git'
 import { MAX_SENT_PROMPTS, packSent, rememberSent, unpackSent } from './saved-chat'
 import type { PostComment } from './review'
 import { createReviewRunner } from './review'
+import { localFixesFile, readSavedFixes } from '../local/fixes'
 import { createWorkspaces } from './workspace'
 
 const IDLE_LIMIT_MS = 30 * 60_000
@@ -230,7 +231,8 @@ export function createChatService(host: LocalHost): ChatService {
       const dir = `${workspaces.chatsRoot}/${name}`
       const saved = await readSavedChat(`${dir}/chat.json`)
       const reviewedAt = await reviews.updatedAt(reviewFileIn(dir))
-      if (Math.max(saved?.updatedAt ?? 0, reviewedAt ?? 0) >= cutoff)
+      const fixedAt = (await readSavedFixes(host, localFixesFile(dir)))?.updatedAt ?? 0
+      if (Math.max(saved?.updatedAt ?? 0, reviewedAt ?? 0, fixedAt) >= cutoff)
         continue
       await host.remove(claudeProjectDirFor(`${dir}/context`)).catch(() => null)
       await host.remove(dir).catch(() => null)
@@ -379,7 +381,6 @@ export function createChatService(host: LocalHost): ChatService {
       ]
 
       let finished = false
-      const pathPrefixes = [worktreeDir, contextDir].filter((dir): dir is string => Boolean(dir))
       const process = host.stream(args, {
         cwd: contextDir,
         stdinFile: promptFile,
@@ -387,7 +388,7 @@ export function createChatService(host: LocalHost): ChatService {
         onLine: (line) => {
           if (!session.started && line.includes('"subtype":"init"'))
             session.started = true
-          const outcome = applyStreamLine(reply, line, pathPrefixes)
+          const outcome = applyStreamLine(reply, line, { repo: worktreeDir, context: contextDir })
           finished ||= outcome.finished
           if (outcome.changed)
             changed(session)
@@ -523,7 +524,7 @@ export function createChatService(host: LocalHost): ChatService {
       const files = changes.files.map((file) => {
         const diff = file.diff.slice(0, Math.max(0, Math.min(MAX_PLAN_FILE_DIFF_CHARS, budget)))
         budget -= diff.length
-        return { path: file.path, status: file.status, diff }
+        return { path: file.path, status: file.status, diff, untracked: file.untracked, isBinary: file.isBinary }
       })
       const dir = `${host.cacheDir}/commit-plans`
       await host.makeDir(dir)
@@ -560,7 +561,7 @@ export function createChatService(host: LocalHost): ChatService {
         const plan = readCommitPlan(output)
         if (!plan)
           throw new ChatError(502, code === 0 ? 'Claude did not return a commit plan. Try again, or write the commits yourself.' : explainExit(code, stderr))
-        return normalizeCommitPlan(plan, changes.files.map(file => file.path))
+        return normalizeCommitPlan(plan, changes.files.map(splitInfo))
       }
       finally {
         await host.remove(promptFile).catch(() => null)

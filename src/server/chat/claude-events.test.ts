@@ -1,6 +1,6 @@
 import type { ChatMessage } from '../../shared/chat'
 import { describe, expect, it } from 'vitest'
-import { applyStreamLine, explainExit } from './claude-events'
+import { applyStreamLine, describeToolInput, explainExit } from './claude-events'
 
 function reply(): ChatMessage {
   return { id: '1', role: 'assistant', text: '', contexts: [], tools: [], status: 'streaming', error: null }
@@ -19,8 +19,15 @@ describe('applyStreamLine', () => {
   it('records tool use with a path relative to the workspace', () => {
     const message = reply()
     applyStreamLine(message, line({ type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 't1', name: 'Read' } } }))
-    applyStreamLine(message, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/work/src/a.ts' } }] } }), ['/work'])
-    expect(message.tools).toEqual([{ id: 't1', name: 'Read', detail: 'src/a.ts' }])
+    applyStreamLine(message, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/work/src/a.ts', offset: 40 } }] } }), { repo: '/work', context: '/ctx' })
+    expect(message.tools).toEqual([{ id: 't1', name: 'Read', detail: 'src/a.ts', root: 'repo', line: 40 }])
+  })
+
+  it('tells repository files from context files and other paths', () => {
+    const roots = { repo: '/work', context: '/ctx' }
+    expect(describeToolInput({ file_path: '/ctx/diffs/a.ts.diff' }, roots)).toEqual({ detail: 'diffs/a.ts.diff', root: 'context', line: null })
+    expect(describeToolInput({ file_path: '/home/me/.claude/skills/ds/SKILL.md' }, roots)).toEqual({ detail: '/home/me/.claude/skills/ds/SKILL.md', root: null, line: null })
+    expect(describeToolInput({ pattern: 'DS|libs', path: '/work/libs' }, roots)).toEqual({ detail: 'DS|libs', root: null, line: null })
   })
 
   it('separates text blocks around tool calls', () => {

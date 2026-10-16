@@ -1,8 +1,14 @@
-import type { ThinkingStep } from '../../shared/thinking-steps'
+import type { ThinkingItem, ThinkingStep } from '../../shared/thinking-steps'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import { css, cx } from 'styled-system/css'
+import { api } from '../lib/api'
+import { useRevealFile } from '../lib/file-reveal'
 import { fileName } from '../lib/format'
+import { useLocalRepo } from '../lib/local-repos'
+import { useSettings } from '../lib/settings'
+import { ReviewContext } from './review-context'
+import { WithTooltip } from './ui/button'
 import { FileIcon } from './ui/file-icon'
 
 const MAX_CHIPS = 4
@@ -58,47 +64,144 @@ function looksLikeFile(item: string) {
   return /\.[a-z0-9]+$/i.test(item) && !/[*?{}]/.test(item)
 }
 
-function Chip({ item, file }: { item: string, file: boolean }) {
+const GENERIC_NAME = /^(?:index|readme|skill|package|main|mod|types|utils|config)\.[a-z0-9]+$/i
+
+function chipLabel(item: ThinkingItem, ambiguous: boolean) {
+  const name = fileName(item.text)
+  const parent = item.text.split('/').slice(-2, -1)[0]
+  return (ambiguous || GENERIC_NAME.test(name)) && parent ? `${parent}/${name}` : name
+}
+
+type ChipAction = { kind: 'diff' } | { kind: 'editor', repoPath: string } | null
+
+function useChipAction() {
+  const review = use(ReviewContext)
+  const revealFile = useRevealFile()
+  const localRepo = useLocalRepo(review?.mergeRequest.ref ?? { host: '', project: '', iid: 0 })
+  const [settings] = useSettings()
+  const changed = new Set(review?.files.flatMap(file => [file.path, file.previousPath ?? file.path]) ?? [])
+
+  function actionFor(item: ThinkingItem): ChipAction {
+    if (item.root !== 'repo')
+      return null
+    if (revealFile && changed.has(item.text))
+      return { kind: 'diff' }
+    return localRepo.path ? { kind: 'editor', repoPath: localRepo.path } : null
+  }
+
+  async function open(item: ThinkingItem, action: ChipAction) {
+    if (action?.kind === 'diff')
+      revealFile?.(item.text, item.line)
+    else if (action?.kind === 'editor')
+      await api.openInEditor({ repoPath: action.repoPath, path: item.text, line: item.line ?? 1, column: 1, editor: settings.editor })
+  }
+
+  return { actionFor, open }
+}
+
+const ACTION_HINTS = {
+  diff: 'Click to show it in the diff.',
+  editor: 'Click to open it in your editor.',
+}
+
+function describeItem(item: ThinkingItem, action: ChipAction) {
+  if (item.root === 'context')
+    return 'A context file Pull Review wrote for Claude, with the merge request details.'
+  if (item.root === null && item.text.startsWith('/'))
+    return 'Outside the repository.'
+  if (!action)
+    return 'Add a local repository for this project to open it in your editor.'
+  return ACTION_HINTS[action.kind]
+}
+
+const chip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '1.5',
+  maxW: '64',
+  h: '6',
+  px: '2',
+  fontSize: 'xs',
+  color: 'fg.muted',
+  bg: 'bg.surface',
+  borderWidth: '1px',
+  borderColor: 'border.default',
+  borderRadius: 'full',
+  '& > svg': { w: '3', h: '3', flexShrink: 0, color: 'fg.subtle' },
+  '&:is(button)': { cursor: 'pointer', _hover: { borderColor: 'border.strong', color: 'fg.default' } },
+})
+
+function FileChip({ item, ambiguous, actions, onError }: { item: ThinkingItem, ambiguous: boolean, actions: ReturnType<typeof useChipAction>, onError: (message: string | null) => void }) {
+  const action = actions.actionFor(item)
+  const label = chipLabel(item, ambiguous)
+  const content = (
+    <>
+      <FileIcon name={fileName(item.text)} />
+      <span className={css({ truncate: true })}>{label}</span>
+      {item.line && <span className={css({ flexShrink: 0, color: 'fg.subtle' })}>:{item.line}</span>}
+    </>
+  )
+  const tooltip = (
+    <>
+      <span className={css({ display: 'block', fontFamily: 'mono', wordBreak: 'break-all' })}>{item.text}{item.line ? `:${item.line}` : ''}</span>
+      <span className={css({ display: 'block', mt: '1', color: 'tooltip.fg', opacity: 0.75 })}>{describeItem(item, action)}</span>
+    </>
+  )
   return (
-    <span
-      title={item}
-      className={css({
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '1.5',
-        maxW: '56',
-        h: '6',
-        px: '2',
-        fontSize: 'xs',
-        color: 'fg.muted',
-        bg: 'bg.surface',
-        borderWidth: '1px',
-        borderColor: 'border.default',
-        borderRadius: 'full',
-        '& > svg': { w: '3', h: '3', flexShrink: 0, color: 'fg.subtle' },
-      })}
-    >
-      {file ? <FileIcon name={fileName(item)} /> : <Search />}
-      <span className={css({ truncate: true, fontFamily: file ? 'body' : 'mono' })}>{file ? fileName(item) : item}</span>
-    </span>
+    <WithTooltip label={tooltip}>
+      {action
+        ? (
+            <button
+              type="button"
+              className={chip}
+              aria-label={`${action.kind === 'diff' ? 'Show' : 'Open'} ${item.text}`}
+              onClick={() => {
+                onError(null)
+                actions.open(item, action).catch((cause: unknown) => onError(cause instanceof Error ? cause.message : String(cause)))
+              }}
+            >
+              {content}
+            </button>
+          )
+        : <span className={chip} tabIndex={0}>{content}</span>}
+    </WithTooltip>
   )
 }
 
-function Chips({ items, files }: { items: string[], files: boolean }) {
+function SearchChip({ text }: { text: string }) {
+  return (
+    <WithTooltip label={<span className={css({ fontFamily: 'mono', wordBreak: 'break-all' })}>{text}</span>}>
+      <span className={chip} tabIndex={0}>
+        <Search />
+        <span className={css({ truncate: true, fontFamily: 'mono' })}>{text}</span>
+      </span>
+    </WithTooltip>
+  )
+}
+
+function Chips({ items, files }: { items: ThinkingItem[], files: boolean }) {
   const [expanded, setExpanded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const actions = useChipAction()
   if (!items.length)
     return null
   const shown = expanded ? items : items.slice(0, MAX_CHIPS)
   const hidden = items.length - shown.length
+  const names = items.map(item => fileName(item.text))
   return (
-    <div className={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5', mt: '1.5' })}>
-      {shown.map(item => <Chip key={item} item={item} file={files || looksLikeFile(item)} />)}
-      {hidden > 0 && (
-        <button type="button" onClick={() => setExpanded(true)} className={css({ fontSize: 'xs', color: 'fg.subtle', cursor: 'pointer', _hover: { color: 'fg.default' } })}>
-          +{hidden} more
-        </button>
-      )}
-    </div>
+    <>
+      <div className={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5', mt: '1.5' })}>
+        {shown.map(item => files || looksLikeFile(item.text)
+          ? <FileChip key={item.text} item={item} ambiguous={names.filter(name => name === fileName(item.text)).length > 1} actions={actions} onError={setError} />
+          : <SearchChip key={item.text} text={item.text} />)}
+        {hidden > 0 && (
+          <button type="button" onClick={() => setExpanded(true)} className={css({ fontSize: 'xs', color: 'fg.subtle', cursor: 'pointer', _hover: { color: 'fg.default' } })}>
+            +{hidden} more
+          </button>
+        )}
+      </div>
+      {error && <div className={css({ mt: '1', fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
+    </>
   )
 }
 

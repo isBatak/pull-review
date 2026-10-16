@@ -6,12 +6,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { css, cx } from 'styled-system/css'
-import { buildContextText, describeRange, isPatch } from '../../../shared/chat'
+import type { ReplyContexts } from '../../../shared/chat'
+import { buildContextText, contextsForReply, describeRange, discussionsInContexts, fixedContexts, isPatch, repairDiffFences } from '../../../shared/chat'
 import { api } from '../../lib/api'
 import { createLineMap } from '../../../shared/line-map'
-import { parseUnifiedPatch, planSuggestions } from '../../../shared/suggestions'
+import { parseUnifiedPatch, patchHasChanges, planSuggestions } from '../../../shared/suggestions'
 import { useChatControls, useChatDraft, useChatSession } from '../../lib/chat'
 import { localChangesKey, useLocalRepo } from '../../lib/local-repos'
+import { useLocalFixes } from '../../lib/local-fixes'
+import { useDiscussions } from '../../hooks/use-merge-request'
 import { MODEL_OPTIONS } from '../../lib/model-options'
 import { EffortSlider } from '../ui/effort-slider'
 import { useSettings } from '../../lib/settings'
@@ -166,15 +169,17 @@ function MessageThinking({ message }: { message: ChatMessage }) {
 
 type SuggestState = { kind: 'idle' } | { kind: 'working' } | { kind: 'done', opened: number, skipped: string[] } | { kind: 'error', message: string }
 
-type ApplyState = { kind: 'idle' } | { kind: 'applying' } | { kind: 'applied', files: string[] } | { kind: 'error', message: string }
+type ApplyState = { kind: 'idle' } | { kind: 'applying' } | { kind: 'applied', files: string[], alreadyApplied: boolean } | { kind: 'error', message: string }
 
-function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: string | null, patch: string }) {
+function PatchActions({ mrRef, repoPath, patch, question }: { mrRef: MrRef, repoPath: string | null, patch: string, question: ReplyContexts }) {
   const [copied, setCopied] = useState(false)
   const [apply, setApply] = useState<ApplyState>({ kind: 'idle' })
   const [suggest, setSuggest] = useState<SuggestState>({ kind: 'idle' })
   const queryClient = useQueryClient()
   const [, setParams] = useSearchParams()
   const { mergeRequest, files } = useReview()
+  const discussions = useDiscussions(mrRef).data
+  const { addFix } = useLocalFixes(mrRef)
   const openSuggestions = useChatControls()?.openSuggestions
 
   async function suggestInGitlab() {
@@ -216,7 +221,13 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
     setApply({ kind: 'applying' })
     try {
       const result = await api.applyPatch(mrRef, repoPath, patch)
-      setApply({ kind: 'applied', files: result.files })
+      setApply({ kind: 'applied', files: result.files, alreadyApplied: result.alreadyApplied })
+      const contexts = fixedContexts(question, result.files)
+      addFix({
+        discussionIds: discussionsInContexts(contexts, discussions ?? []),
+        findingIds: contexts.flatMap(context => context.threads.flatMap(thread => thread.findingId ?? [])),
+        paths: result.files,
+      })
       void queryClient.invalidateQueries({ queryKey: localChangesKey(mrRef, repoPath) })
     }
     catch (cause) {
@@ -243,7 +254,7 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
             onClick={() => void applyToRepo()}
           >
             {apply.kind === 'applying' ? <Loader2 className={spinner} /> : <GitPullRequestArrow />}
-            {apply.kind === 'applied' ? 'Applied' : 'Apply to local repository'}
+            {apply.kind === 'applied' ? (apply.alreadyApplied ? 'Already applied' : 'Applied') : 'Apply to local repository'}
           </Button>
         )}
       </div>
@@ -262,7 +273,9 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
       {suggest.kind === 'error' && <div className={css({ fontSize: 'xs', color: 'danger.fg' })}>{suggest.message}</div>}
       {apply.kind === 'applied' && (
         <div className={css({ fontSize: 'xs', color: 'success.fg' })}>
-          {`Changed ${apply.files.join(', ') || 'no files'} in ${repoPath}. The changes are not committed yet. `}
+          {apply.alreadyApplied
+            ? `This patch is already in ${repoPath}, so nothing was changed. The comments it fixes are marked as fixed locally. `
+            : `Changed ${apply.files.join(', ') || 'no files'} in ${repoPath}. The changes are not committed yet. `}
           <button
             type="button"
             onClick={() => setParams((current) => {
@@ -283,12 +296,18 @@ function PatchActions({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: stri
   )
 }
 
-function PatchBlock({ mrRef, repoPath, patch }: { mrRef: MrRef, repoPath: string | null, patch: string }) {
+function PatchBlock({ mrRef, repoPath, patch, question }: { mrRef: MrRef, repoPath: string | null, patch: string, question: ReplyContexts }) {
   const files = useMemo(() => parsePatch(patch), [patch])
   return (
     <div>
       {files.length ? <PatchView files={files} /> : <pre>{patch}</pre>}
-      <PatchActions mrRef={mrRef} repoPath={repoPath} patch={patch} />
+      {patchHasChanges(patch)
+        ? <PatchActions mrRef={mrRef} repoPath={repoPath} patch={patch} question={question} />
+        : (
+            <div className={css({ mt: '1.5', fontSize: 'xs', color: 'warning.fg' })}>
+              This patch has no changed lines, so it looks cut off. Ask Claude to send the whole patch again.
+            </div>
+          )}
     </div>
   )
 }
@@ -298,10 +317,11 @@ interface MessageViewProps {
   baseUrl: string
   mrRef: MrRef
   repoPath: string | null
+  question: ReplyContexts
   onOpen: (request: PromptViewerRequest) => void
 }
 
-function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewProps) {
+function MessageView({ message, baseUrl, mrRef, repoPath, question, onOpen }: MessageViewProps) {
   if (message.role === 'user') {
     return (
       <div className={cx('group', css({ alignSelf: 'flex-end', maxW: '90%', display: 'flex', flexDir: 'column', alignItems: 'flex-end', gap: '1.5' }))}>
@@ -335,10 +355,10 @@ function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewP
         <Markdown
           baseUrl={baseUrl}
           renderCodeBlock={message.status === 'done'
-            ? (language, code) => isPatch(language, code) ? <PatchBlock mrRef={mrRef} repoPath={repoPath} patch={code} /> : null
+            ? (language, code) => isPatch(language, code) ? <PatchBlock mrRef={mrRef} repoPath={repoPath} patch={code} question={question} /> : null
             : undefined}
         >
-          {message.text}
+          {repairDiffFences(message.text)}
         </Markdown>
       )}
       {message.status === 'stopped' && !message.tools.length && <div className={css({ mt: '1', fontSize: 'xs', color: 'fg.subtle' })}>Stopped.</div>}
@@ -492,7 +512,17 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
                 ))}
               </div>
             )}
-            {state.messages.map(message => <MessageView key={message.id} message={message} baseUrl={baseUrl} mrRef={mrRef} repoPath={localRepo.path} onOpen={setViewer} />)}
+            {state.messages.map((message, index) => (
+              <MessageView
+                key={message.id}
+                message={message}
+                baseUrl={baseUrl}
+                mrRef={mrRef}
+                repoPath={localRepo.path}
+                question={contextsForReply(state.messages, index)}
+                onOpen={setViewer}
+              />
+            ))}
           </div>
 
           <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>

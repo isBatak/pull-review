@@ -1,6 +1,6 @@
 import type { Discussion } from './types'
 import { describe, expect, it } from 'vitest'
-import { buildContextUpdateNote, buildDiscussionsSummary, buildPrompt, describeRange, isPatch, toChatThread } from './chat'
+import { buildContextUpdateNote, buildDiscussionsSummary, buildPrompt, contextsForReply, describeRange, discussionsInContexts, fixedContexts, isPatch, repairDiffFences, toChatThread } from './chat'
 
 const author = { id: 1, username: 'blaz', name: 'Blaž Bagić', avatarUrl: null, webUrl: '' }
 
@@ -80,5 +80,50 @@ describe('buildContextUpdateNote', () => {
     expect(buildContextUpdateNote([])).toBeNull()
     expect(buildContextUpdateNote(['changes.diff', 'diffs/a.ts.diff'])).toContain('updated: changes.diff, diffs/a.ts.diff.')
     expect(buildContextUpdateNote(Array.from({ length: 12 }, (_, index) => `f${index}`))).toContain('and 2 more')
+  })
+})
+
+describe('discussionsInContexts', () => {
+  it('finds attached threads by id, and by file, line and text for chats saved without ids', () => {
+    const thread = toChatThread(discussion())!
+    const { discussionId: _id, ...withoutId } = thread
+    const context = (threads: typeof thread[]) => ({ path: 'a.md', side: 'additions' as const, startLine: 10, endLine: 12, code: 'x', threads })
+    expect(discussionsInContexts([context([thread])], [])).toEqual(['d1'])
+    expect(discussionsInContexts([context([withoutId])], [discussion()])).toEqual(['d1'])
+    expect(discussionsInContexts([context([{ ...withoutId, line: 13 }])], [discussion()])).toEqual([])
+  })
+})
+
+describe('contextsForReply', () => {
+  const context = (path: string) => ({ path, side: 'additions' as const, startLine: 1, endLine: 1, code: null, threads: [] })
+  const user = (contexts: ReturnType<typeof context>[]) => ({ role: 'user' as const, contexts })
+  const assistant = { role: 'assistant' as const, contexts: [] }
+
+  it('uses what was attached to the question', () => {
+    expect(contextsForReply([user([context('a.md')]), assistant], 1)).toEqual({ contexts: [context('a.md')], inherited: false })
+  })
+
+  it('carries attachments over to follow-ups that attach nothing', () => {
+    const messages = [user([context('a.md')]), assistant, user([]), assistant]
+    expect(contextsForReply(messages, 3)).toEqual({ contexts: [context('a.md')], inherited: true })
+  })
+
+  it('counts carried-over attachments only for files the patch changed', () => {
+    const reply = { contexts: [context('a.md'), context('b.md')], inherited: true }
+    expect(fixedContexts(reply, ['b.md'])).toEqual([context('b.md')])
+    expect(fixedContexts({ ...reply, inherited: false }, ['b.md'])).toHaveLength(2)
+  })
+})
+
+describe('repairDiffFences', () => {
+  it('widens a diff fence when an unchanged line inside it is a fence', () => {
+    const text = ['Fix:', '```diff', '--- a/SKILL.md', '+++ b/SKILL.md', '@@ -1,3 +1,3 @@', ' ```', '-old', '+new', '```', 'Done.'].join('\n')
+    expect(repairDiffFences(text)).toBe(['Fix:', '````diff', '--- a/SKILL.md', '+++ b/SKILL.md', '@@ -1,3 +1,3 @@', ' ```', '-old', '+new', '````', 'Done.'].join('\n'))
+  })
+
+  it('leaves normal blocks and unfinished streams alone', () => {
+    const normal = ['```diff', '-a', '+b', '```', '```ts', 'x', '```'].join('\n')
+    expect(repairDiffFences(normal)).toBe(normal)
+    expect(repairDiffFences('```diff\n-a')).toBe('```diff\n-a')
   })
 })

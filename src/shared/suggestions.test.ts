@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSuggestionRange, parseUnifiedPatch, planSuggestions } from './suggestions'
+import { parseSuggestionRange, parseUnifiedPatch, patchHasChanges, planSuggestions } from './suggestions'
 
 const HEAD = ['one', 'two', 'three', 'four', 'five', 'six'].join('\n')
 
@@ -53,5 +53,12 @@ describe('parseSuggestionRange', () => {
     expect(parseSuggestionRange('suggestion')).toEqual({ above: 0, below: 0 })
     expect(parseSuggestionRange('ts')).toBeNull()
     expect(parseSuggestionRange(null)).toBeNull()
+  })
+})
+
+describe('patchHasChanges', () => {
+  it('needs at least one added or removed line', () => {
+    expect(patchHasChanges('--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\n-b\n+c')).toBe(true)
+    expect(patchHasChanges('--- a/x\n+++ b/x\n@@ -90,1 +90,1 @@\n glab api')).toBe(false)
   })
 })

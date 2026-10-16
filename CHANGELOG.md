@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.8 (2026-10-16)
+
+### Fixing review comments
+
+- Threads you fixed with a Claude patch show "Fixed locally" until you push. Mark or unmark threads yourself too.
+- File chips in Claude's steps show the full path and open the file.
+- Markdown patches no longer get cut off in the chat.
+
+### Commits
+
+- "Plan atomic commits with Claude" can split one file into several commits, and writes plain messages without [TAG] prefixes.
+- See what goes into each commit, planned or unpushed, in a window.
+
 ## 0.2.7 (2026-10-16)
 
 ### Review with Claude

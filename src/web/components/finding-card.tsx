@@ -13,8 +13,10 @@ import { useClaudeReviewControls } from '../lib/claude-review'
 import { timeAgo } from '../lib/format'
 import { localChangesKey, useLocalRepo } from '../lib/local-repos'
 import { useReviewSignature } from '../lib/settings'
+import { useLocalFixes } from '../lib/local-fixes'
 import { CommentComposer } from './comment-composer'
 import { CommentPreview } from './comment-preview'
+import { LocalFixBadge } from './local-fix-badge'
 import { useReview, useReviewActions } from './review-context'
 import { SuggestionBlock } from './suggestion-block'
 import { Button } from './ui/button'
@@ -28,7 +30,7 @@ const SEVERITY_TONES: Record<FindingSeverity, 'danger' | 'warning' | 'neutral'> 
 
 const spinner = css({ animation: 'spin', flexShrink: 0 })
 
-type ApplyState = { kind: 'idle' } | { kind: 'applying' } | { kind: 'applied' } | { kind: 'error', message: string }
+type ApplyState = { kind: 'idle' } | { kind: 'applying' } | { kind: 'applied', alreadyApplied: boolean } | { kind: 'error', message: string }
 
 export function SeverityBadge({ severity }: { severity: FindingSeverity }) {
   return <span className={badge({ tone: SEVERITY_TONES[severity] })}>{severityLabel(severity)}</span>
@@ -44,6 +46,7 @@ export function FindingCard({ finding, file, finishedAt }: { finding: ReviewFind
   const [editing, setEditing] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const signature = useReviewSignature()
+  const { addFix } = useLocalFixes(mergeRequest.ref)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [apply, setApply] = useState<ApplyState>({ kind: 'idle' })
@@ -87,8 +90,9 @@ export function FindingCard({ finding, file, finishedAt }: { finding: ReviewFind
       const patch = contents.newContents === null ? null : buildFindingPatch(finding, contents.newContents)
       if (!patch)
         throw new Error('The suggestion no longer matches the file.')
-      await api.applyPatch(mergeRequest.ref, localRepo.path, patch)
-      setApply({ kind: 'applied' })
+      const result = await api.applyPatch(mergeRequest.ref, localRepo.path, patch)
+      setApply({ kind: 'applied', alreadyApplied: result.alreadyApplied })
+      addFix({ discussionIds: [], findingIds: [finding.id], paths: result.files })
       void queryClient.invalidateQueries({ queryKey: localChangesKey(mergeRequest.ref, localRepo.path) })
     }
     catch (cause) {
@@ -109,6 +113,7 @@ export function FindingCard({ finding, file, finishedAt }: { finding: ReviewFind
 
   return (
     <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', overflow: 'hidden', fontFamily: 'body', whiteSpace: 'normal', textAlign: 'left' })}>
+      <LocalFixBadge findingId={finding.id} />
       <div className={css({ display: 'flex', gap: '2.5', px: '3', py: '2.5' })}>
         <span className={css({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, w: '6', h: '6', borderRadius: 'full', bg: 'accent.subtle', color: 'accent.fg', '& svg': { w: '3.5', h: '3.5' } })}>
           <Sparkles />
@@ -162,7 +167,7 @@ export function FindingCard({ finding, file, finishedAt }: { finding: ReviewFind
               {finding.suggestion !== null && localRepo.path && (
                 <Button size="xs" disabled={apply.kind === 'applying' || apply.kind === 'applied'} title={`Apply Claude's suggested change to ${localRepo.path}`} onClick={() => void applyLocally()}>
                   {apply.kind === 'applying' ? <Loader2 className={spinner} /> : apply.kind === 'applied' ? <Check /> : <GitPullRequestArrow />}
-                  {apply.kind === 'applied' ? 'Applied' : 'Apply locally'}
+                  {apply.kind === 'applied' ? (apply.alreadyApplied ? 'Already applied' : 'Applied') : 'Apply locally'}
                 </Button>
               )}
               <Button size="xs" onClick={() => setEditing(true)}>

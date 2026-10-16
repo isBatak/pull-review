@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { timeAgo } from '../lib/format'
 import { CommentComposer } from './comment-composer'
+import { LocalFixBadge, MarkFixedButton } from './local-fix-badge'
 import { useReview, useReviewActions } from './review-context'
 import { Avatar } from './ui/avatar'
 import { Button, IconButton } from './ui/button'
@@ -145,6 +146,7 @@ export function ThreadCard({ discussion, header }: { discussion: Discussion, hea
         </Collapsible.Trigger>
       )}
       <Collapsible.Content>
+        {!discussion.resolved && <LocalFixBadge discussionId={discussion.id} />}
         <div className={css({ '& > * + *': { borderTopWidth: '1px', borderColor: 'border.subtle' } })}>
           {notes.map(note => <NoteItem key={note.id} note={note} discussion={discussion} review={review} />)}
         </div>
@@ -186,6 +188,7 @@ export function ThreadCard({ discussion, header }: { discussion: Discussion, hea
                   >
                     Reply…
                   </button>
+                  <MarkFixedButton discussion={discussion} />
                   {resolveButton}
                 </div>
               )}

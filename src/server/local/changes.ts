@@ -3,6 +3,7 @@ import type { MrRef } from '../../shared/types'
 import type { GitTools } from './git'
 import type { LocalHost } from './host'
 import { countChanges } from '../../shared/line-map'
+import { parseChangedRanges } from '../../shared/local-changes'
 import { readUnpushed } from './commits'
 import { GitError } from './git'
 
@@ -61,6 +62,16 @@ export async function readStatus(gitTools: GitTools, repoPath: string) {
   return parsePorcelainStatus(result.stdout)
 }
 
+async function readChangedSinceHead(gitTools: GitTools, repoPath: string, headSha: string) {
+  if (!/^[0-9a-f]{7,64}$/i.test(headSha))
+    return null
+  const known = await gitTools.git(['cat-file', '-e', `${headSha}^{commit}`], repoPath)
+  if (known.code !== 0)
+    return null
+  const diff = await gitTools.git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-renames', headSha], repoPath)
+  return diff.code === 0 ? parseChangedRanges(diff.stdout) : null
+}
+
 export async function readLocalChanges(gitTools: GitTools, ref: MrRef, rawRepoPath: string, headSha = ''): Promise<LocalChanges> {
   const repo = await gitTools.openRepository(rawRepoPath, ref)
   const entries = await readStatus(gitTools, repo.path)
@@ -88,7 +99,13 @@ export async function readLocalChanges(gitTools: GitTools, ref: MrRef, rawRepoPa
       diff: chunk,
     }
   })
-  return { path: repo.path, files, unpushed: headSha ? await readUnpushed(gitTools, repo.path, headSha) : [], truncated }
+  return {
+    path: repo.path,
+    files,
+    unpushed: headSha ? await readUnpushed(gitTools, repo.path, headSha) : [],
+    truncated,
+    changedSinceHead: await readChangedSinceHead(gitTools, repo.path, headSha),
+  }
 }
 
 export async function discardLocalChanges(host: LocalHost, gitTools: GitTools, ref: MrRef, rawRepoPath: string, paths: string[] | null) {

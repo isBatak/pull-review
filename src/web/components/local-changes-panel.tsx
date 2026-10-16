@@ -1,24 +1,18 @@
-import type { FileDiffOptions } from '@pierre/diffs/react'
 import type { CommitResult } from '../../shared/commit-plan'
-import type { LocalChangedFile } from '../../shared/local-changes'
+import type { LocalChangedFile, UnpushedCommit as UnpushedCommitSummary } from '../../shared/local-changes'
 import type { MrRef } from '../../shared/types'
-import { FileDiff } from '@pierre/diffs/react'
-import { useQueryClient } from '@tanstack/react-query'
-import { FileCheck2, GitCommitHorizontal, Loader2, RefreshCw, Undo2, Upload } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Eye, FileCheck2, GitCommitHorizontal, Loader2, RefreshCw, Undo2, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { api } from '../lib/api'
-import { GITHUB_THEMES } from '../lib/code-tokens'
-import { directoryName, fileName } from '../lib/format'
 import { localChangesKey, useLocalChanges } from '../lib/local-repos'
-import { useDiffLayout, useTheme, useWrapLines } from '../lib/preferences'
-import { parsePatch } from './chat/patch-view'
 import { mrKey } from '../../shared/mr-ref'
 import { CommitForm } from './commit-form'
-import { DiffStat } from './file-diff-card'
+import { ChangesDialog } from './changes-dialog'
+import { PatchFileCard } from './patch-file-card'
 import { useReview } from './review-context'
 import { Button } from './ui/button'
-import { FileIcon } from './ui/file-icon'
 
 const STATUS_LABELS: Record<LocalChangedFile['status'], string> = {
   added: 'New',
@@ -26,14 +20,6 @@ const STATUS_LABELS: Record<LocalChangedFile['status'], string> = {
   removed: 'Deleted',
   renamed: 'Renamed',
 }
-
-const diffStyle = {
-  '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
-  '--diffs-font-size': '12px',
-  '--diffs-line-height': '20px',
-} as React.CSSProperties
-
-const card = css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', overflow: 'hidden' })
 
 function ConfirmDiscard({ label, busy, onConfirm, onCancel }: { label: string, busy: boolean, onConfirm: () => void, onCancel: () => void }) {
   return (
@@ -46,46 +32,43 @@ function ConfirmDiscard({ label, busy, onConfirm, onCancel }: { label: string, b
 }
 
 function LocalFileCard({ file, busy, onDiscard }: { file: LocalChangedFile, busy: boolean, onDiscard: () => void }) {
-  const [theme] = useTheme()
-  const [layout] = useDiffLayout()
-  const [wrap] = useWrapLines()
   const [confirming, setConfirming] = useState(false)
-  const fileDiff = useMemo(() => parsePatch(file.diff)[0] ?? null, [file.diff])
-  const isOneSided = file.additions === 0 || file.deletions === 0
-  const options = useMemo<FileDiffOptions<undefined, undefined>>(() => ({
-    diffStyle: isOneSided ? 'unified' : layout,
-    overflow: wrap ? 'wrap' : 'scroll',
-    theme: GITHUB_THEMES,
-    themeType: theme,
-    disableFileHeader: true,
-    lineDiffType: 'word-alt',
-  }), [isOneSided, layout, wrap, theme])
-
   return (
-    <section className={card}>
-      <header className={css({ display: 'flex', alignItems: 'center', gap: '2', minH: '10', px: '2.5', bg: 'bg.subtle', borderBottomWidth: '1px', borderColor: 'border.default' })}>
-        <FileIcon name={fileName(file.path)} />
-        <div className={css({ minW: '0', display: 'flex', alignItems: 'center', fontFamily: 'mono', fontSize: 'xs' })} title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}>
-          <span className={css({ color: 'fg.subtle', truncate: true })}>{directoryName(file.path)}</span>
-          <span className={css({ fontWeight: 'semibold', whiteSpace: 'nowrap' })}>{fileName(file.path)}</span>
-        </div>
-        <div className={css({ ml: 'auto', display: 'flex', alignItems: 'center', gap: '3', flexShrink: 0 })}>
-          {!file.isBinary && <DiffStat additions={file.additions} deletions={file.deletions} />}
-          <span className={css({ fontSize: '2xs', fontWeight: 'semibold', textTransform: 'uppercase', letterSpacing: 'wide', color: 'fg.subtle' })}>{STATUS_LABELS[file.status]}</span>
-          {confirming
-            ? <ConfirmDiscard label={file.untracked ? 'Delete this new file?' : 'Undo these changes?'} busy={busy} onCancel={() => setConfirming(false)} onConfirm={onDiscard} />
-            : (
-                <Button size="xs" variant="ghost" disabled={busy} onClick={() => setConfirming(true)}>
-                  <Undo2 />
-                  Discard
-                </Button>
-              )}
-        </div>
-      </header>
-      {file.isBinary && <div className={css({ p: '4', fontSize: 'sm', color: 'fg.muted' })}>Binary file changed.</div>}
-      {!file.isBinary && fileDiff && <FileDiff fileDiff={fileDiff} options={options} style={diffStyle} />}
-      {!file.isBinary && !fileDiff && <div className={css({ p: '4', fontSize: 'sm', color: 'fg.muted' })}>No line changes to show.</div>}
-    </section>
+    <PatchFileCard
+      path={file.path}
+      previousPath={file.previousPath}
+      diff={file.diff}
+      isBinary={file.isBinary}
+      label={STATUS_LABELS[file.status]}
+      actions={confirming
+        ? <ConfirmDiscard label={file.untracked ? 'Delete this new file?' : 'Undo these changes?'} busy={busy} onCancel={() => setConfirming(false)} onConfirm={onDiscard} />
+        : (
+            <Button size="xs" variant="ghost" disabled={busy} onClick={() => setConfirming(true)}>
+              <Undo2 />
+              Discard
+            </Button>
+          )}
+    />
+  )
+}
+
+function UnpushedCommit({ mrRef, repoPath, headSha, sha }: { mrRef: MrRef, repoPath: string, headSha: string, sha: string }) {
+  const details = useQuery({
+    queryKey: ['unpushed-commit', mrKey(mrRef), repoPath, sha],
+    queryFn: () => api.unpushedCommit(mrRef, repoPath, headSha, sha),
+    staleTime: Infinity,
+    retry: false,
+  })
+  if (details.isPending)
+    return <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', fontSize: 'sm', color: 'fg.muted' })}><Loader2 className={css({ animation: 'spin', w: '3.5', h: '3.5' })} /> Loading the commit…</div>
+  if (details.error)
+    return <div className={css({ fontSize: 'sm', color: 'danger.fg' })}>{details.error.message}</div>
+  const body = details.data.message.split('\n').slice(1).join('\n').trim()
+  return (
+    <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
+      {body && <pre className={css({ p: '3', fontFamily: 'mono', fontSize: 'xs', color: 'fg.muted', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>{body}</pre>}
+      {details.data.files.map(file => <PatchFileCard key={file.path} path={file.path} diff={file.diff} isBinary={file.isBinary} />)}
+    </div>
   )
 }
 
@@ -96,6 +79,7 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
   const [busy, setBusy] = useState(false)
   const [committing, setCommitting] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [openCommit, setOpenCommit] = useState<UnpushedCommitSummary | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'error', text: string } | null>(null)
   const unpushed = changes.data?.unpushed ?? []
   const branch = mergeRequest.sourceBranch
@@ -204,9 +188,17 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
           </div>
           <ul className={css({ display: 'flex', flexDir: 'column', gap: '1', fontSize: 'xs' })}>
             {unpushed.map(commit => (
-              <li key={commit.sha} className={css({ display: 'flex', gap: '2' })}>
-                <span className={css({ fontFamily: 'mono', color: 'fg.subtle' })}>{commit.sha.slice(0, 8)}</span>
-                <span className={css({ truncate: true })}>{commit.subject}</span>
+              <li key={commit.sha}>
+                <button
+                  type="button"
+                  title="Show this commit's changes"
+                  onClick={() => setOpenCommit(commit)}
+                  className={css({ display: 'flex', alignItems: 'center', gap: '2', maxW: 'full', textAlign: 'left', cursor: 'pointer', _hover: { '& .subject': { textDecoration: 'underline' } }, '& svg': { w: '3.5', h: '3.5', flexShrink: 0, color: 'fg.subtle' } })}
+                >
+                  <Eye />
+                  <span className={css({ fontFamily: 'mono', color: 'fg.subtle' })}>{commit.sha.slice(0, 8)}</span>
+                  <span className={`subject ${css({ truncate: true })}`}>{commit.subject}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -225,6 +217,14 @@ export function LocalChangesPanel({ mrRef, repoPath }: { mrRef: MrRef, repoPath:
         </div>
       )}
       {files.map(file => <LocalFileCard key={file.path} file={file} busy={busy} onDiscard={() => void discard([file.path])} />)}
+      <ChangesDialog
+        open={openCommit !== null}
+        onClose={() => setOpenCommit(null)}
+        title={openCommit?.subject ?? ''}
+        description={openCommit ? `Commit ${openCommit.sha.slice(0, 8)}, not pushed yet.` : undefined}
+      >
+        {openCommit && <UnpushedCommit mrRef={mrRef} repoPath={repoPath} headSha={mergeRequest.diffRefs.headSha} sha={openCommit.sha} />}
+      </ChangesDialog>
     </div>
   )
 }
