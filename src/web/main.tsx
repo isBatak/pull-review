@@ -5,6 +5,7 @@ import { BrowserRouter, HashRouter, Route, Routes, useLocation } from 'react-rou
 import { parseMrRef } from '../shared/mr-ref'
 import { HomePage } from './pages/home-page'
 import { ReviewPage } from './pages/review-page'
+import { UpdateDialog } from './components/update-dialog'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { isTinyApp, routeExternalLinks } from './lib/platform'
 import { ErrorState } from './pages/states'
@@ -39,6 +40,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="*" element={<MrRoute />} />
         </Routes>
       </Router>
+      {isTinyApp && <UpdateDialog />}
     </QueryClientProvider>
   </StrictMode>,
 )

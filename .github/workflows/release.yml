@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if this version is released
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$version is already released. Bump the version to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.version.outputs.skip != 'true'
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        if: steps.version.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install tinyjs
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          tinyjs_version=$(node -p "require('./package.json').pinned.tinyjs")
+          curl -fsSL https://tinyjs.app/install | TINYJS_VERSION="v$tinyjs_version" TINYJS_NO_MODIFY_PATH=1 sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        if: steps.version.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Release v${{ steps.version.outputs.version }}
+        if: steps.version.outputs.skip != 'true'
+        run: pnpm release --ci

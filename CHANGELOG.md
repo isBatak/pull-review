@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.10 (2026-10-16)
+
+- The desktop app checks for updates when it opens and once a day. When a new version is out, it shows what changed and asks if you want to update now.
+- Check yourself any time with Pull Review, Check for Updates….
+- Choose Later to be asked again next time, or Skip this version to wait for the one after.
+- Desktop builds always include the newest backend. Before, a build could ship the backend from the build before it.
+
 ## 0.2.9 (2026-10-16)
 
 - When your local repository is on another merge request's branch, the Local changes tab says so instead of showing that branch's changes, and offers to switch when the folder is clean.

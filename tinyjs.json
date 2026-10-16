@@ -3,7 +3,7 @@
   "title": "Pull Review",
   "size": "1440x900",
   "id": "dev.pull-review.app",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "icon": "build/icon.png",
   "backend": "out/app-backend/main.js",
   "frontend": {
@@ -12,17 +12,25 @@
     "dev": "pnpm exec vite --port 5173 --strictPort",
     "devUrl": "http://127.0.0.1:5173"
   },
+  "update": {
+    "url": "https://github.com/isBatak/pull-review/releases/latest/download/manifest.json",
+    "auto": "daily"
+  },
   "api": {
     "origins": {
       "file://*": [
         "request",
         "shell.open",
-        "clip.write"
+        "clip.write",
+        "update.check",
+        "update.install"
       ],
       "http://127.0.0.1:5173": [
         "request",
         "shell.open",
-        "clip.write"
+        "clip.write",
+        "update.check",
+        "update.install"
       ]
     }
   }

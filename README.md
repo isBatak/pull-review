@@ -34,6 +34,7 @@ pnpm desktop:install                          # builds "Pull Review.app" and cop
 | `pnpm desktop:build` | Builds `dist/Pull Review.app`. Add `--universal` for one app that runs on Apple Silicon and Intel |
 | `pnpm desktop:install` | Builds and copies the app to `/Applications` |
 | `pnpm desktop:zip` | Builds a universal app and zips it to `Pull Review <version>.zip` for sharing |
+| `pnpm release` | Builds a universal app and publishes it as a GitHub release that installed apps update to. CI runs this on every push to `main` that has a new version. Add `--dry-run` to build without uploading |
 
 How it fits together:
 
@@ -42,15 +43,39 @@ How it fits together:
 - The backend reads `PATH` and `GITLAB_*` variables from your login shell, so a Homebrew `glab` works when the app is opened from Finder.
 - Links to GitLab, Jira and other sites open in your default browser.
 - `tinyjs build` owns `dist/`, so the project's own builds go to `out/`.
+- `tinyjs build` copies the backend before it runs the frontend build, so the desktop scripts run `tsdown` first. Without that, the app ships the backend from the previous build.
 
 Security settings for the desktop app:
 
-- `tinyjs.json` `"api"` lets the page call only `request`, `shell.open` and `clip.write`. tinyjs has about 140 other built-in calls, such as AppleScript, secrets and clipboard reading, and the page can't reach them. Add a call to both origin lists only if the frontend really needs it.
+- `tinyjs.json` `"api"` lets the page call only `request`, `shell.open`, `clip.write`, `update.check` and `update.install`. tinyjs has about 140 other built-in calls, such as AppleScript, secrets and clipboard reading, and the page can't reach them. Add a call to both origin lists only if the frontend really needs it.
 - `onNavigate` in `src/tiny/main.ts` keeps the window on the app's own pages. Web and mail links open in your default apps, and other links are blocked.
 - Production builds carry a Content Security Policy (`build/content-security-policy.ts`), so the page runs only its own scripts.
 - The desktop scripts check that the installed tinyjs is the version pinned in `package.json` (`pinned.tinyjs`). Read the tinyjs changes before you move the pin.
 
 The app is ad-hoc signed. That's fine for an app you built yourself. To share it, sign it with a Developer ID (`signIdentity` in `tinyjs.json`) and run `tinyjs notarize`.
+
+## Updates
+
+The desktop app checks for a new version when it opens and once a day. It reads `manifest.json` from the latest GitHub release (`"update"` in `tinyjs.json`). When a newer version is out, it shows the release notes and offers Update and restart, Later, or Skip this version. Pull Review, Check for Updates… checks right away, and also offers a version you skipped.
+
+To release a new version, bump the version in `package.json` and `tinyjs.json`, add a `## <version>` section to `CHANGELOG.md`, and push to `main`. That section becomes the release notes.
+
+The Release workflow (`.github/workflows/release.yml`) runs on every push to `main`. If the version already has a release, it stops right away. Otherwise it type checks, runs the tests, and runs `pnpm release --ci`, which:
+
+1. builds a universal app with `tinyjs publish`,
+2. points the manifest at the zip in the `v<version>` release,
+3. uploads both with `gh release create`,
+4. checks that the links work.
+
+You can also release from your Mac with `pnpm release`. It first checks that your work is committed and pushed. Add `--dry-run` to build without uploading.
+
+Notes:
+
+- The manifest carries the notes of the newest 20 versions, and the dialog shows the ones newer than the installed app. So someone who skipped a few releases sees all of their changes.
+- The updater checks the zip's sha256 from the manifest, which is served over https, then swaps the app and restarts it. With a Developer ID signature it also checks that the update is signed by the same team.
+- Updates only install into the packaged app. If macOS runs the app from a temporary copy (it was opened straight from Downloads), the dialog asks you to move it to Applications first.
+- To test the flow locally, build a copy with `"update": { "url": "http://127.0.0.1:8765/manifest.json" }`, then bump the version, run `tinyjs publish`, and serve `dist/publish` on that port. The updater allows plain http only for `127.0.0.1` and `localhost`.
+- Apps from before 0.2.10 have no updater. Install 0.2.10 by hand once.
 
 ## Claude chat
 

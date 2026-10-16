@@ -1,7 +1,7 @@
 {
   "name": "pull-review",
   "type": "module",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "private": true,
   "description": "Review GitLab merge requests locally with grouped, beautiful diffs.",
   "bin": {
@@ -16,14 +16,15 @@
     "dev": "concurrently -k -n server,web \"tsx watch src/server/dev.ts\" \"vite\"",
     "build": "panda codegen && vite build && tsdown",
     "start": "node bin/pull-review.mjs",
-    "desktop:dev": "node scripts/check-tinyjs.mjs && tinyjs dev",
-    "desktop:build": "node scripts/check-tinyjs.mjs && tinyjs build",
+    "desktop:dev": "node scripts/check-tinyjs.mjs && tsdown && tinyjs dev",
+    "desktop:build": "node scripts/check-tinyjs.mjs && tsdown && tinyjs build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "desktop:zip": "node scripts/check-tinyjs.mjs && tinyjs build --universal && ditto -c -k --keepParent \"dist/Pull Review.app\" \"Pull Review $npm_package_version.zip\"",
-    "desktop:install": "node scripts/check-tinyjs.mjs && tinyjs build && rm -rf \"/Applications/Pull Review.app\" && cp -R \"dist/Pull Review.app\" /Applications/",
+    "desktop:zip": "node scripts/check-tinyjs.mjs && tsdown && tinyjs build --universal && ditto -c -k --keepParent \"dist/Pull Review.app\" \"Pull Review $npm_package_version.zip\"",
+    "desktop:install": "node scripts/check-tinyjs.mjs && tsdown && tinyjs build && rm -rf \"/Applications/Pull Review.app\" && cp -R \"dist/Pull Review.app\" /Applications/",
     "build:app-web": "panda codegen && vite build --base ./ --outDir ../../out/app-web --emptyOutDir",
-    "build:app": "pnpm run build:app-web && tsdown"
+    "build:app": "pnpm run build:app-web && tsdown",
+    "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
     "@ark-ui/react": "^5.39.3",

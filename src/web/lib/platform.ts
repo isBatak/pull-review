@@ -6,7 +6,10 @@ interface BridgeResponse {
 }
 
 interface TinyGlobal {
-  api: { call: <T>(method: string, params?: unknown) => Promise<T> }
+  api: {
+    call: <T>(method: string, params?: unknown) => Promise<T>
+    on: <T>(event: string, listener: (data: T) => void) => () => void
+  }
   app: { shell: { open: (target: string) => Promise<unknown> } }
   clipboard?: { write: (data: { text: string }) => unknown }
 }
@@ -14,6 +17,16 @@ interface TinyGlobal {
 const tinyGlobal = (globalThis as { tiny?: TinyGlobal }).tiny
 
 export const isTinyApp = Boolean(tinyGlobal?.api)
+
+export function callApp<T>(method: string): Promise<T> {
+  if (!tinyGlobal)
+    return Promise.reject(new Error('Only available in the desktop app'))
+  return tinyGlobal.api.call<T>(method)
+}
+
+export function onAppEvent<T>(event: string, listener: (data: T) => void): () => void {
+  return tinyGlobal?.api.on(event, listener) ?? (() => {})
+}
 
 export interface TransportResponse {
   ok: boolean

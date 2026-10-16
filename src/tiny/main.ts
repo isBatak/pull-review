@@ -1,4 +1,5 @@
 import { parseEnvOutput } from '../shared/env-output'
+import { CHECK_FOR_UPDATES_MENU_ID } from '../shared/updates'
 import { createApi } from '../server/api'
 import { createChatService } from '../server/chat/service'
 import { createTokenResolver } from '../server/token-core'
@@ -118,6 +119,10 @@ export const api = {
       return { status: response.status, contentType, text: await response.text() }
     return { status: response.status, contentType, base64: toBase64(new Uint8Array(await response.arrayBuffer())) }
   },
+}
+
+export function init(app: TinyApp) {
+  app.setMenu([{ role: 'app', items: [{ id: CHECK_FOR_UPDATES_MENU_ID, label: 'Check for Updates…' }] }])
 }
 
 const DEV_ORIGIN = 'http://127.0.0.1:5173'

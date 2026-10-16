@@ -16,6 +16,15 @@ interface TjsDirEntry {
 
 type TjsStdio = 'pipe' | 'ignore' | 'inherit'
 
+interface TinyMenuItem {
+  id: string
+  label: string
+}
+
+interface TinyApp {
+  setMenu: (menus: Array<{ role: 'app', items: TinyMenuItem[] }>) => void
+}
+
 declare const tjs: {
   env: Record<string, string | undefined>
   pid: number
