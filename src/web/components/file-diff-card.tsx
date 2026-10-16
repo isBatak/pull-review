@@ -209,7 +209,7 @@ function FileDiffCardImpl({
     if (draft)
       entry(draft.side, draft.line).metadata.hasDraft = true
     for (const suggestion of suggestions)
-      entry('additions', suggestion.line).metadata.suggestions.push(suggestion)
+      entry(suggestion.side ?? 'additions', suggestion.line).metadata.suggestions.push(suggestion)
     for (const finding of findings)
       entry(finding.side, finding.endLine).metadata.findings.push(finding)
     return [...byLine.values()]
@@ -291,7 +291,7 @@ function FileDiffCardImpl({
             <div key={suggestion.id} className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
               <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', mb: '2', fontSize: 'xs', color: 'accent.fg', '& svg': { w: '3.5', h: '3.5' } })}>
                 <Sparkles />
-                Suggestion from Claude. Edit it if needed, then click Comment to post it.
+                Draft from Claude. Edit it if needed, then click Comment to post it.
               </div>
               <CommentComposer
                 initialValue={suggestion.body}

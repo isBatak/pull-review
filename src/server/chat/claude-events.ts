@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatToolRoot, ChatToolUse } from '../../shared/chat'
+import { COMMENT_TOOL, readCommentInput } from '../../shared/comment-proposals'
 
 interface ContentBlock {
   type: string
@@ -6,6 +7,8 @@ interface ContentBlock {
   name?: string
   text?: string
   input?: Record<string, unknown>
+  tool_use_id?: string
+  is_error?: boolean
 }
 
 interface StreamLine {
@@ -41,6 +44,13 @@ function rawDetail(input: Record<string, unknown> | undefined) {
 
 function within(path: string, dir: string | null | undefined) {
   return dir && path.startsWith(`${dir}/`) ? path.slice(dir.length + 1) : null
+}
+
+function describeToolUse(block: ContentBlock, roots: ToolRoots): Pick<ChatToolUse, 'detail' | 'root' | 'line' | 'comment'> {
+  if (block.name !== COMMENT_TOOL)
+    return describeToolInput(block.input, roots)
+  const comment = readCommentInput(block.input)
+  return { detail: comment ? `${comment.path}:${comment.line}` : null, root: null, line: null, comment }
 }
 
 export function describeToolInput(input: Record<string, unknown> | undefined, roots: ToolRoots): Pick<ChatToolUse, 'detail' | 'root' | 'line'> {
@@ -96,13 +106,25 @@ export function applyStreamLine(message: ChatMessage, raw: string, roots: ToolRo
       if (block.type !== 'tool_use' || !block.id)
         continue
       const tool = message.tools.find(item => item.id === block.id)
-      const described = describeToolInput(block.input, roots)
-      if (tool && (tool.detail !== described.detail || tool.root !== described.root || tool.line !== described.line)) {
+      const described = describeToolUse(block, roots)
+      if (tool && (tool.detail !== described.detail || tool.root !== described.root || tool.line !== described.line || tool.comment !== described.comment)) {
         Object.assign(tool, described)
         changed = true
       }
       else if (!tool) {
         message.tools.push({ id: block.id, name: block.name ?? 'Tool', ...described })
+        changed = true
+      }
+    }
+    return { changed, finished: false }
+  }
+
+  if (line.type === 'user' && Array.isArray(line.message?.content)) {
+    let changed = false
+    for (const block of line.message.content) {
+      const tool = block.type === 'tool_result' && block.is_error ? message.tools.find(item => item.id === block.tool_use_id) : undefined
+      if (tool && !tool.failed) {
+        tool.failed = true
         changed = true
       }
     }

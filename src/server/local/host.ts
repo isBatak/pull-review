@@ -20,6 +20,7 @@ export interface LocalHost {
   pid: number
   homeDir: string
   cacheDir: string
+  scriptRunner: string[]
   env: () => Promise<Record<string, string>>
   isExecutable: (path: string) => Promise<boolean>
   run: (args: string[], options: { cwd: string, env: Record<string, string>, timeoutMs: number }) => Promise<RunResult>

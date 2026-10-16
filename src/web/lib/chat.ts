@@ -113,7 +113,7 @@ export function useChatState(open: boolean, setOpen: (open: boolean) => void, au
     setSuggestionDrafts(current => [
       ...current.map(draft => ({ ...draft, first: false })),
       ...drafts
-        .filter(draft => !current.some(open => open.path === draft.path && open.line === draft.line))
+        .filter(draft => !current.some(open => open.path === draft.path && (open.side ?? 'additions') === (draft.side ?? 'additions') && open.line === draft.line))
         .map((draft, index) => ({ ...draft, id: crypto.randomUUID(), first: index === 0 })),
     ])
   }, [])

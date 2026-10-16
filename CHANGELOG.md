@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.11 (2026-10-16)
+
+- Ask Claude in the chat to comment on the code. It uses a new add_review_comment tool and adds each comment for a file and line, shown as a card under its answer.
+- Click Add to diff on a card, or Add all to diff, to open the comments as drafts on their lines. Edit them, then click Comment to post. Nothing is posted before that.
+- Claude can only comment on lines in the diff. When it picks another line, the tool tells it which lines it can use, and it tries again.
+- A comment can hold a GitLab suggestion, and the card shows it as a small diff.
+
 ## 0.2.10 (2026-10-16)
 
 - The desktop app checks for updates when it opens and once a day. When a new version is out, it shows what changed and asks if you want to update now.

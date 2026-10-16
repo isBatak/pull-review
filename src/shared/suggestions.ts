@@ -1,3 +1,4 @@
+import type { DiffSide } from './types'
 import { fence } from './chat'
 
 type PatchLineKind = ' ' | '-' | '+'
@@ -20,6 +21,7 @@ export interface PatchFile {
 
 export interface SuggestionDraft {
   path: string
+  side?: DiffSide
   line: number
   body: string
 }

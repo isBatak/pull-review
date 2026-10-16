@@ -20,6 +20,7 @@ export function createNodeLocalHost(): LocalHost {
     pid: process.pid,
     homeDir: home,
     cacheDir: cacheDirFor(home),
+    scriptRunner: [process.execPath],
     env: async () => Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
     isExecutable: path => access(path, constants.X_OK).then(() => true, () => false),
 

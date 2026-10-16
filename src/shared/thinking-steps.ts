@@ -1,4 +1,5 @@
 import type { ChatToolRoot, ChatToolUse } from './chat'
+import { COMMENT_TOOL } from './comment-proposals'
 
 export type ThinkingStepKind = 'search' | 'read' | 'write' | 'post' | 'other'
 
@@ -40,11 +41,17 @@ function kindOf(tool: ChatToolUse): ThinkingStepKind {
     return 'read'
   if (tool.name === STRUCTURED_OUTPUT_TOOL)
     return 'write'
+  if (tool.name === COMMENT_TOOL)
+    return 'post'
   return 'other'
 }
 
 function files(count: number) {
   return count === 1 ? '1 file' : `${count} files`
+}
+
+function comments(count: number) {
+  return count === 1 ? '1 comment' : `${count} comments`
 }
 
 function labelled(step: Omit<ThinkingStep, 'doneLabel' | 'activeLabel'>, tool: ChatToolUse, writeLabel: string): ThinkingStep {
@@ -55,6 +62,8 @@ function labelled(step: Omit<ThinkingStep, 'doneLabel' | 'activeLabel'>, tool: C
       return { ...step, doneLabel: `Read ${files(step.items.length)}`, activeLabel: `Reading ${files(step.items.length)}` }
     case 'write':
       return { ...step, doneLabel: `Wrote ${writeLabel}`, activeLabel: `Writing ${writeLabel}` }
+    case 'post':
+      return { ...step, doneLabel: `Drafted ${comments(step.items.length)}`, activeLabel: 'Drafting a comment' }
     default:
       return { ...step, doneLabel: `Used ${tool.name}`, activeLabel: `Using ${tool.name}` }
   }

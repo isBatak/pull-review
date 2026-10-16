@@ -1,4 +1,4 @@
-import type { ChatCodeContext, ChatMessage, ChatWorkspace } from '../../../shared/chat'
+import type { ChatCodeContext, ChatMessage, ChatToolUse, ChatWorkspace } from '../../../shared/chat'
 import type { PromptViewerRequest } from './prompt-viewer'
 import type { MrRef } from '../../../shared/types'
 import { ArrowUp, Check, ClipboardCopy, Eye, FileCode2, FolderGit2, GitPullRequestArrow, Loader2, MessageSquare, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react'
@@ -10,7 +10,12 @@ import type { ReplyContexts } from '../../../shared/chat'
 import { buildContextText, contextsForReply, describeRange, discussionsInContexts, fixedContexts, isPatch, repairDiffFences } from '../../../shared/chat'
 import { api } from '../../lib/api'
 import { createLineMap } from '../../../shared/line-map'
-import { parseUnifiedPatch, patchHasChanges, planSuggestions } from '../../../shared/suggestions'
+import type { SuggestionDraft } from '../../../shared/suggestions'
+import { parseSuggestionRange, parseUnifiedPatch, patchHasChanges, planSuggestions } from '../../../shared/suggestions'
+import { codeForRange } from '../../../shared/line-map'
+import { SuggestionBlock } from '../suggestion-block'
+import type { CommentProposal, CommentTarget } from '../../../shared/comment-proposals'
+import { resolveCommentTarget } from '../../../shared/comment-proposals'
 import { useChatControls, useChatDraft, useChatSession } from '../../lib/chat'
 import { localChangesKey, useLocalRepo } from '../../lib/local-repos'
 import { useLocalFixes } from '../../lib/local-fixes'
@@ -312,6 +317,83 @@ function PatchBlock({ mrRef, repoPath, patch, question }: { mrRef: MrRef, repoPa
   )
 }
 
+interface CommentCardProps {
+  proposal: CommentProposal
+  target: CommentTarget
+  opened: boolean
+  baseUrl: string
+  onOpen: (draft: SuggestionDraft) => void
+}
+
+function CommentCard({ proposal, target, opened, baseUrl, onOpen }: CommentCardProps) {
+  const { files } = useReview()
+
+  function renderSuggestion(language: string | null, code: string) {
+    const range = parseSuggestionRange(language)
+    const file = target.kind === 'ok' && proposal.side === 'additions' ? files.find(each => each.path === target.draft.path) : undefined
+    if (!range || !file)
+      return null
+    const original = codeForRange(file.diff, 'additions', proposal.line - range.above, proposal.line + range.below)
+    return original === null ? null : <SuggestionBlock path={file.path} original={original} suggested={code} />
+  }
+
+  return (
+    <div className={css({ borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', overflow: 'hidden' })}>
+      <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', minH: '8', px: '3', fontSize: 'xs', bg: 'bg.subtle', borderBottomWidth: '1px', borderColor: 'border.default', '& svg': { w: '3.5', h: '3.5', color: 'fg.subtle', flexShrink: 0 } })}>
+        <MessageSquare />
+        <span className={css({ fontWeight: 'semibold', flexShrink: 0 })}>Comment on</span>
+        <span className={css({ fontFamily: 'mono', truncate: true })} title={proposal.path}>{`${proposal.path}:${proposal.line}`}</span>
+        {proposal.side === 'deletions' && <span className={css({ color: 'fg.subtle', flexShrink: 0 })}>old version</span>}
+      </div>
+      <div className={css({ px: '3', py: '2' })}>
+        <Markdown baseUrl={baseUrl} renderCodeBlock={renderSuggestion}>{proposal.body}</Markdown>
+      </div>
+      <div className={css({ px: '3', pb: '2' })}>
+        {target.kind === 'ok'
+          ? (
+              <Button size="xs" disabled={opened} title="Open a comment box on this line, filled with this text. Nothing is posted until you click Comment." onClick={() => onOpen(target.draft)}>
+                {opened ? <Check /> : <MessageSquarePlus />}
+                {opened ? 'Opened in the diff' : 'Add to diff'}
+              </Button>
+            )
+          : <div className={css({ fontSize: 'xs', color: 'warning.fg' })}>{target.message}</div>}
+      </div>
+    </div>
+  )
+}
+
+function CommentCards({ tools, baseUrl }: { tools: ChatToolUse[], baseUrl: string }) {
+  const { files } = useReview()
+  const openSuggestions = useChatControls()?.openSuggestions
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
+  const cards = useMemo(() => tools.flatMap(tool => tool.comment && !tool.failed ? [{ id: tool.id, proposal: tool.comment, target: resolveCommentTarget(files, tool.comment) }] : []), [tools, files])
+  const waiting = cards.filter(card => card.target.kind === 'ok' && !opened.has(card.id))
+  if (!cards.length)
+    return null
+
+  function open(ids: string[], drafts: SuggestionDraft[]) {
+    openSuggestions?.(drafts)
+    setOpened(current => new Set([...current, ...ids]))
+  }
+
+  return (
+    <div className={css({ display: 'flex', flexDir: 'column', gap: '2', mt: '3' })}>
+      {cards.map(card => (
+        <CommentCard key={card.id} proposal={card.proposal} target={card.target} opened={opened.has(card.id)} baseUrl={baseUrl} onOpen={draft => open([card.id], [draft])} />
+      ))}
+      {waiting.length > 1 && (
+        <div>
+          <Button size="xs" variant="solid" onClick={() => open(waiting.map(card => card.id), waiting.flatMap(card => card.target.kind === 'ok' ? [card.target.draft] : []))}>
+            <MessageSquarePlus />
+            {`Add all ${waiting.length} to diff`}
+          </Button>
+        </div>
+      )}
+      {opened.size > 0 && <div className={css({ fontSize: 'xs', color: 'success.fg' })}>Check each comment in the diff and click Comment to post it.</div>}
+    </div>
+  )
+}
+
 interface MessageViewProps {
   message: ChatMessage
   baseUrl: string
@@ -361,6 +443,7 @@ function MessageView({ message, baseUrl, mrRef, repoPath, question, onOpen }: Me
           {repairDiffFences(message.text)}
         </Markdown>
       )}
+      {message.status !== 'streaming' && <CommentCards tools={message.tools} baseUrl={baseUrl} />}
       {message.status === 'stopped' && !message.tools.length && <div className={css({ mt: '1', fontSize: 'xs', color: 'fg.subtle' })}>Stopped.</div>}
       {message.status === 'error' && (
         <div className={css({ mt: '2', px: '3', py: '2', fontSize: 'xs', color: 'danger.fg', bg: 'danger.subtle', borderRadius: 'md', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>

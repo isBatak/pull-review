@@ -17,6 +17,8 @@ import type { PostComment } from './review'
 import { createReviewRunner } from './review'
 import { localFixesFile, readSavedFixes } from '../local/fixes'
 import { createWorkspaces } from './workspace'
+import { commentToolConfig, commentToolScript, commentToolTargets } from './comment-tool'
+import { COMMENT_TOOL } from '../../shared/comment-proposals'
 
 const IDLE_LIMIT_MS = 30 * 60_000
 const IDLE_CHECK_MS = 60_000
@@ -259,6 +261,18 @@ export function createChatService(host: LocalHost): ChatService {
     return { dir, files }
   }
 
+  async function writeCommentTool(contextDir: string, files: MrSnapshot['files']) {
+    const toolDir = `${contextDir}/comment-tool`
+    const script = `${toolDir}/server.mjs`
+    const targets = `${toolDir}/targets.json`
+    const config = `${toolDir}/mcp.json`
+    await host.makeDir(toolDir)
+    await host.writeFile(targets, JSON.stringify(commentToolTargets(files)))
+    await host.writeFile(script, commentToolScript(targets))
+    await host.writeFile(config, commentToolConfig(host.scriptRunner, script))
+    return config
+  }
+
   function contextUpdate(session: Session, files: ContextFile[]) {
     const seen = Object.fromEntries(files.map(file => [file.name, hashText(file.text)]))
     const known = session.started && Object.keys(session.seenContext).length > 0
@@ -356,6 +370,7 @@ export function createChatService(host: LocalHost): ChatService {
       session.seenContext = update.seen
       const message = withUpdateNote(update.note, buildPrompt(input.text, input.contexts))
       const systemPrompt = buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir })
+      const mcpConfig = await writeCommentTool(contextDir, mr.files)
       await host.writeFile(promptFile, message)
       rememberSent(session.sent, question.id, { message, systemPrompt, files: [...files.filter(file => !file.name.startsWith('diffs/')).map(file => file.path), `${contextDir}/diffs/ (one diff per changed file)`, ...(worktreeDir ? [worktreeDir] : [])] })
 
@@ -369,9 +384,11 @@ export function createChatService(host: LocalHost): ChatService {
         '--tools',
         READ_ONLY_TOOLS,
         '--allowedTools',
-        READ_ONLY_TOOLS,
+        `${READ_ONLY_TOOLS},${COMMENT_TOOL}`,
         '--setting-sources',
         '',
+        '--mcp-config',
+        mcpConfig,
         '--strict-mcp-config',
         ...chatModelArgs(input.model, input.effort),
         '--append-system-prompt',

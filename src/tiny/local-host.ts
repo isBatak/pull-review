@@ -57,6 +57,7 @@ export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string
     pid: tjs.pid,
     homeDir: tjs.homeDir,
     cacheDir: `${tjs.homeDir}/Library/Caches/pull-review`,
+    scriptRunner: [tjs.exePath, 'run'],
     env: loadEnv,
     isExecutable: exists,
     run,

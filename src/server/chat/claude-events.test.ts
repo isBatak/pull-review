@@ -51,6 +51,18 @@ describe('applyStreamLine', () => {
     expect(message).toMatchObject({ status: 'error', error: 'Boom' })
   })
 
+  it('keeps comment tool calls and marks the ones the tool rejected', () => {
+    const message = reply()
+    const use = (id: string, line: number) => ({ type: 'tool_use', id, name: 'mcp__pull-review__add_review_comment', input: { path: 'src/a.ts', line, body: 'Rename this.' } })
+    applyStreamLine(message, JSON.stringify({ type: 'assistant', message: { content: [use('t1', 9), use('t2', 2)] } }))
+    applyStreamLine(message, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'not in the diff' }, { type: 'tool_result', tool_use_id: 't2', content: 'ok' }] } }))
+    expect(message.tools).toMatchObject([
+      { id: 't1', detail: 'src/a.ts:9', failed: true },
+      { id: 't2', detail: 'src/a.ts:2', comment: { path: 'src/a.ts', side: 'additions', line: 2, body: 'Rename this.' } },
+    ])
+    expect(message.tools[1]!.failed).toBeUndefined()
+  })
+
   it('ignores lines that are not JSON', () => {
     expect(applyStreamLine(reply(), 'not json')).toEqual({ changed: false, finished: false })
   })

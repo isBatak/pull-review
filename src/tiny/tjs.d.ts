@@ -29,6 +29,7 @@ declare const tjs: {
   env: Record<string, string | undefined>
   pid: number
   homeDir: string
+  exePath: string
   spawn: (args: string[], options?: { stdout?: TjsStdio, stderr?: TjsStdio, stdin?: TjsStdio, env?: Record<string, string> }) => TjsProcess
   stat: (path: string) => Promise<{ isFile?: boolean, isDirectory?: boolean }>
   writeFile: (path: string, data: Uint8Array) => Promise<void>

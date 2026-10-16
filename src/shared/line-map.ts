@@ -163,3 +163,32 @@ export function codeForRange(diff: string, side: DiffSide, startLine: number, en
   }
   return lines.join('\n')
 }
+
+export function shownLines(diff: string): Record<DiffSide, number[]> {
+  const shown: Record<DiffSide, number[]> = { additions: [], deletions: [] }
+  let oldLine = 0
+  let newLine = 0
+  let inHunk = false
+  for (const line of diffLines(diff)) {
+    const header = HUNK_HEADER.exec(line)
+    if (header) {
+      oldLine = Number(header[1])
+      newLine = Number(header[3])
+      inHunk = true
+      continue
+    }
+    if (!inHunk || !line)
+      continue
+    if (line.startsWith('+')) {
+      shown.additions.push(newLine++)
+    }
+    else if (line.startsWith('-')) {
+      shown.deletions.push(oldLine++)
+    }
+    else {
+      shown.additions.push(newLine++)
+      shown.deletions.push(oldLine++)
+    }
+  }
+  return shown
+}
