@@ -12,7 +12,8 @@ import { createLineMap } from '../../../shared/line-map'
 import { parseUnifiedPatch, planSuggestions } from '../../../shared/suggestions'
 import { useChatControls, useChatDraft, useChatSession } from '../../lib/chat'
 import { localChangesKey, useLocalRepo } from '../../lib/local-repos'
-import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../../lib/model-options'
+import { MODEL_OPTIONS } from '../../lib/model-options'
+import { EffortSlider } from '../ui/effort-slider'
 import { useSettings } from '../../lib/settings'
 import { fileName } from '../../lib/format'
 import { LinkRepoForm } from '../link-repo-form'
@@ -22,6 +23,12 @@ import { Markdown } from '../ui/markdown'
 import { Select } from '../ui/select'
 import { parsePatch, PatchView } from './patch-view'
 import { PromptViewer } from './prompt-viewer'
+import { stepsFromTools } from '../../../shared/thinking-steps'
+import { ThinkingTimeline } from '../thinking-timeline'
+import { ClaudeReviewPanel } from '../claude-review-panel'
+import { UnderlineTabs } from '../ui/underline-tabs'
+import { useClaudeReviewControls } from '../../lib/claude-review'
+import { useStoredState } from '../../lib/stored-state'
 
 const SUGGESTIONS = [
   'Summarize this merge request',
@@ -145,18 +152,15 @@ function WorkspaceBar({ mrRef, workspace, repoPath, onRepoPathChange }: { mrRef:
   )
 }
 
-function ToolLine({ message }: { message: ChatMessage }) {
-  if (!message.tools.length)
+function MessageThinking({ message }: { message: ChatMessage }) {
+  const steps = useMemo(() => stepsFromTools(message.tools), [message.tools])
+  if (message.status !== 'streaming' && !steps.length)
     return null
+  const outcome = message.status === 'streaming' ? 'running' : message.status === 'done' ? 'done' : message.status
   return (
-    <ul className={css({ display: 'flex', flexDir: 'column', gap: '0.5', mb: '2', fontSize: 'xs', color: 'fg.subtle', fontFamily: 'mono' })}>
-      {message.tools.map(tool => (
-        <li key={tool.id} className={css({ truncate: true })} title={tool.detail ?? undefined}>
-          {tool.name}
-          {tool.detail && ` ${tool.detail}`}
-        </li>
-      ))}
-    </ul>
+    <div className={css({ mb: '3' })}>
+      <ThinkingTimeline steps={steps} outcome={outcome} startedAt={message.startedAt} finishedAt={message.finishedAt} collapseWhenDone />
+    </div>
   )
 }
 
@@ -324,10 +328,9 @@ function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewP
     )
   }
 
-  const waiting = message.status === 'streaming' && !message.text
   return (
     <div className={css({ minW: '0' })}>
-      <ToolLine message={message} />
+      <MessageThinking message={message} />
       {message.text && (
         <Markdown
           baseUrl={baseUrl}
@@ -338,13 +341,7 @@ function MessageView({ message, baseUrl, mrRef, repoPath, onOpen }: MessageViewP
           {message.text}
         </Markdown>
       )}
-      {waiting && (
-        <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', color: 'fg.subtle', '& svg': { w: '3.5', h: '3.5' } })}>
-          <Loader2 className={spinner} />
-          {message.tools.length ? 'Reading the code…' : 'Thinking…'}
-        </div>
-      )}
-      {message.status === 'stopped' && <div className={css({ mt: '1', fontSize: 'xs', color: 'fg.subtle' })}>Stopped.</div>}
+      {message.status === 'stopped' && !message.tools.length && <div className={css({ mt: '1', fontSize: 'xs', color: 'fg.subtle' })}>Stopped.</div>}
       {message.status === 'error' && (
         <div className={css({ mt: '2', px: '3', py: '2', fontSize: 'xs', color: 'danger.fg', bg: 'danger.subtle', borderRadius: 'md', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>
           {message.error}
@@ -386,6 +383,10 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stickToBottom = useRef(true)
+  const claudeReview = useClaudeReviewControls()
+  const [storedTab, setTab] = useStoredState<'chat' | 'review'>('pull-review:ai-tab', 'chat')
+  const tab = claudeReview && storedTab === 'review' ? 'review' : 'chat'
+  const findingCount = claudeReview?.current ? claudeReview.state.findings.filter(finding => finding.status !== 'dismissed').length : 0
 
   useEffect(() => {
     if (localRepo.loading)
@@ -426,13 +427,32 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   const busy = state.running || state.messages.some(message => message.status === 'streaming')
 
   return (
-    <aside aria-label="Claude chat" className={css({ display: 'flex', flexDir: 'column', h: 'full', minH: '0', bg: 'bg.surface' })}>
+    <aside aria-label="Claude" className={css({ display: 'flex', flexDir: 'column', h: 'full', minH: '0', bg: 'bg.surface' })}>
       <div className={css({ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2', h: '10', pl: '3', pr: '1.5', borderBottomWidth: '1px', borderColor: 'border.default' })}>
-        <Sparkles className={css({ w: '4', h: '4', color: 'accent.fg' })} />
-        <h2 className={css({ fontSize: 'sm', fontWeight: 'semibold', flex: '1' })}>Claude</h2>
-        <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void api.chatReset(mrRef).then(apply)}>
-          <RotateCcw />
-        </IconButton>
+        <Sparkles className={css({ w: '4', h: '4', color: 'accent.fg', flexShrink: 0 })} />
+        <UnderlineTabs
+          label="Claude"
+          size="sm"
+          value={tab}
+          onChange={setTab}
+          className={css({ flex: '1', alignSelf: 'stretch', alignItems: 'center' })}
+          tabs={[
+            { value: 'chat', label: 'Chat' },
+            ...(claudeReview
+              ? [{
+                  value: 'review' as const,
+                  label: 'Review',
+                  count: findingCount || null,
+                  badge: claudeReview.state.status === 'running' && <span aria-label="Review running" className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'accent.default', animation: 'pulse 1.5s ease-in-out infinite' })} />,
+                }]
+              : []),
+          ]}
+        />
+        {tab === 'chat' && (
+          <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void api.chatReset(mrRef).then(apply)}>
+            <RotateCcw />
+          </IconButton>
+        )}
         <IconButton size="xs" label="Close chat" onClick={() => controls.setOpen(false)}>
           <X />
         </IconButton>
@@ -440,105 +460,113 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
 
       <WorkspaceBar mrRef={mrRef} workspace={state.workspace} repoPath={localRepo.path} onRepoPathChange={localRepo.setPath} />
 
-      <div
-        ref={scrollRef}
-        onScroll={(event) => {
-          const element = event.currentTarget
-          stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40
-        }}
-        className={css({ flex: '1', minH: '0', overflowY: 'auto', display: 'flex', flexDir: 'column', gap: '4', p: '3' })}
-      >
-        {state.messages.length === 0 && (
-          <div className={css({ display: 'flex', flexDir: 'column', gap: '2', mt: 'auto' })}>
-            <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1' })}>
-              {controls.autoSelection
-                ? 'Ask about this merge request. Lines and review comments you select in a diff are added to your question.'
-                : 'Ask about this merge request. Select lines or review comments in a diff and click Ask Claude in the file header to add them.'}
-            </p>
-            {SUGGESTIONS.map(suggestion => (
-              <button
-                key={suggestion}
-                type="button"
-                disabled={busy || sending}
-                onClick={() => void send(suggestion)}
-                className={css({ textAlign: 'left', px: '3', py: '2', fontSize: 'sm', color: 'fg.default', bg: 'bg.subtle', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', cursor: 'pointer', _hover: { bg: 'bg.muted' }, _disabled: { opacity: 0.5, cursor: 'not-allowed' } })}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        )}
-        {state.messages.map(message => <MessageView key={message.id} message={message} baseUrl={baseUrl} mrRef={mrRef} repoPath={localRepo.path} onOpen={setViewer} />)}
-      </div>
+      {tab === 'review' && <ClaudeReviewPanel />}
 
-      <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
-        {error && <div className={css({ mb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
-        <form
-          className={composerBox}
-          onSubmit={(event) => {
-            event.preventDefault()
-            void send(draft)
-          }}
-        >
-          {attached.length > 0 && (
-            <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '1' })}>
-              {chatDraft.contexts.map((context, index) => (
-                <ContextChip key={`${context.path}:${context.side}:${context.startLine}`} context={context} onOpen={setViewer} onRemove={() => chatDraft.removeContext(index)} />
-              ))}
-              {chatDraft.selection && <ContextChip live context={chatDraft.selection} onOpen={setViewer} onRemove={chatDraft.dismissSelection} />}
-            </div>
-          )}
-          <textarea
-            ref={inputRef}
-            value={draft}
-            rows={3}
-            onChange={event => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      {tab === 'chat' && (
+        <>
+          <div
+            ref={scrollRef}
+            onScroll={(event) => {
+              const element = event.currentTarget
+              stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40
+            }}
+            className={css({ flex: '1', minH: '0', overflowY: 'auto', display: 'flex', flexDir: 'column', gap: '4', p: '3' })}
+          >
+            {state.messages.length === 0 && (
+              <div className={css({ display: 'flex', flexDir: 'column', gap: '2', mt: 'auto' })}>
+                <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1' })}>
+                  {controls.autoSelection
+                    ? 'Ask about this merge request. Lines and review comments you select in a diff are added to your question.'
+                    : 'Ask about this merge request. Select lines or review comments in a diff and click Ask Claude in the file header to add them.'}
+                </p>
+                {SUGGESTIONS.map(suggestion => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    disabled={busy || sending}
+                    onClick={() => void send(suggestion)}
+                    className={css({ textAlign: 'left', px: '3', py: '2', fontSize: 'sm', color: 'fg.default', bg: 'bg.subtle', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', cursor: 'pointer', _hover: { bg: 'bg.muted' }, _disabled: { opacity: 0.5, cursor: 'not-allowed' } })}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+            {state.messages.map(message => <MessageView key={message.id} message={message} baseUrl={baseUrl} mrRef={mrRef} repoPath={localRepo.path} onOpen={setViewer} />)}
+          </div>
+
+          <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
+            {error && <div className={css({ mb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
+            <form
+              className={composerBox}
+              onSubmit={(event) => {
                 event.preventDefault()
                 void send(draft)
-              }
-            }}
-            placeholder="Ask about the code. Enter sends, Shift+Enter adds a line."
-            aria-label="Message to Claude"
-            className={css({ w: 'full', resize: 'none', bg: 'transparent', outline: 'none', fontSize: 'sm', color: 'fg.default', _placeholder: { color: 'fg.subtle' } })}
-          />
-          <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
-            <Select variant="ghost" label="Model" value={settings.chatModel} options={MODEL_OPTIONS} onChange={chatModel => updateSettings({ chatModel })} />
-            <Select variant="ghost" label="Effort" value={settings.chatEffort} options={EFFORT_OPTIONS} onChange={chatEffort => updateSettings({ chatEffort })} />
-            <span className={css({ flex: '1' })} />
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={!draft.trim() && !attached.length}
-              onClick={() => {
-                const input = { text: draft, contexts: attached, repoPath: localRepo.path, ...modelChoice }
-                setViewer({
-                  title: 'Prompt preview',
-                  description: 'What Claude will get if you send now: your message, the instructions, and the files it can read.',
-                  load: () => api.chatPreview(mrRef, input),
-                })
               }}
             >
-              <Eye />
-              Preview
-            </Button>
-            {busy
-              ? (
-                  <Button size="xs" onClick={() => void api.chatStop(mrRef).then(apply)}>
-                    <Square />
-                    Stop
-                  </Button>
-                )
-              : (
-                  <Button size="xs" variant="solid" type="submit" disabled={!draft.trim() || sending} className={css({ px: '2' })}>
-                    <ArrowUp />
-                    Send
-                  </Button>
-                )}
+              {attached.length > 0 && (
+                <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '1' })}>
+                  {chatDraft.contexts.map((context, index) => (
+                    <ContextChip key={`${context.path}:${context.side}:${context.startLine}`} context={context} onOpen={setViewer} onRemove={() => chatDraft.removeContext(index)} />
+                  ))}
+                  {chatDraft.selection && <ContextChip live context={chatDraft.selection} onOpen={setViewer} onRemove={chatDraft.dismissSelection} />}
+                </div>
+              )}
+              <textarea
+                ref={inputRef}
+                value={draft}
+                rows={3}
+                onChange={event => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    void send(draft)
+                  }
+                }}
+                placeholder="Ask about the code. Enter sends, Shift+Enter adds a line."
+                aria-label="Message to Claude"
+                className={css({ w: 'full', resize: 'none', bg: 'transparent', outline: 'none', fontSize: 'sm', color: 'fg.default', _placeholder: { color: 'fg.subtle' } })}
+              />
+              <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
+                <Select variant="ghost" label="Model" value={settings.chatModel} options={MODEL_OPTIONS} onChange={chatModel => updateSettings({ chatModel })} />
+                <span className={css({ display: 'inline-flex', px: '1.5' })}>
+                  <EffortSlider label="Effort" value={settings.chatEffort} onChange={chatEffort => updateSettings({ chatEffort })} />
+                </span>
+                <span className={css({ flex: '1' })} />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={!draft.trim() && !attached.length}
+                  onClick={() => {
+                    const input = { text: draft, contexts: attached, repoPath: localRepo.path, ...modelChoice }
+                    setViewer({
+                      title: 'Prompt preview',
+                      description: 'What Claude will get if you send now: your message, the instructions, and the files it can read.',
+                      load: () => api.chatPreview(mrRef, input),
+                    })
+                  }}
+                >
+                  <Eye />
+                  Preview
+                </Button>
+                {busy
+                  ? (
+                      <Button size="xs" onClick={() => void api.chatStop(mrRef).then(apply)}>
+                        <Square />
+                        Stop
+                      </Button>
+                    )
+                  : (
+                      <Button size="xs" variant="solid" type="submit" disabled={!draft.trim() || sending} className={css({ px: '2' })}>
+                        <ArrowUp />
+                        Send
+                      </Button>
+                    )}
+              </div>
+            </form>
           </div>
-        </form>
-      </div>
+        </>
+      )}
       <PromptViewer request={viewer} onClose={() => setViewer(null)} />
     </aside>
   )

@@ -18,6 +18,7 @@ import type {
 } from '../../shared/types'
 
 import type { ChatPromptView, ChatSendInput, ChatState } from '../../shared/chat'
+import type { FindingStatus, ReviewRunInput, ReviewRunState } from '../../shared/claude-review'
 import type { CommitPlan, CommitPlanInput, CommitResult, PlannedCommit } from '../../shared/commit-plan'
 import type { LocalChanges } from '../../shared/local-changes'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
@@ -120,6 +121,11 @@ export const api = {
   chatSent: (ref: MrRef, messageId: string) => call<ChatPromptView>(ref, '/mr/chat/sent', { query: { messageId } }),
   chatStop: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/stop', { method: 'POST' }),
   chatReset: (ref: MrRef) => call<ChatState>(ref, '/mr/chat/reset', { method: 'POST' }),
+  reviewState: (ref: MrRef, since: number, wait: number) => call<ReviewRunState>(ref, '/mr/review/state', { query: { since: String(since), wait: String(wait) } }),
+  runReview: (ref: MrRef, input: ReviewRunInput) => call<ReviewRunState>(ref, '/mr/review/run', { method: 'POST', body: input }),
+  stopReview: (ref: MrRef) => call<ReviewRunState>(ref, '/mr/review/stop', { method: 'POST' }),
+  setFindingStatus: (ref: MrRef, ids: string[], status: FindingStatus) => call<ReviewRunState>(ref, '/mr/review/findings', { method: 'POST', body: { ids, status } }),
+  setFindingDraft: (ref: MrRef, id: string, draft: string | null) => call<ReviewRunState>(ref, '/mr/review/findings/draft', { method: 'POST', body: { id, draft } }),
   mergeRequest: (ref: MrRef) => call<MrPayload>(ref, '/mr'),
   discussions: (ref: MrRef) => call<Discussion[]>(ref, '/mr/discussions'),
   approvals: (ref: MrRef) => call<Approvals>(ref, '/mr/approvals'),

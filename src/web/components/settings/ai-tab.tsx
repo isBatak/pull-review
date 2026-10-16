@@ -1,11 +1,28 @@
 import type { AppSettings } from '../../lib/settings'
 import { CheckCircle2, CircleAlert } from 'lucide-react'
-import { css } from 'styled-system/css'
+import { useEffect, useState } from 'react'
+import { css, cx } from 'styled-system/css'
+import { DEFAULT_SIGNATURE, MAX_SIGNATURE_LENGTH } from '../../../shared/claude-review'
 import { useChatAvailable } from '../../lib/chat'
+import { Checkbox } from '../ui/checkbox'
 import { Segmented } from '../ui/segmented'
 
 const fieldLabel = css({ display: 'block', fontSize: 'xs', fontWeight: 'semibold', mb: '1.5' })
 const fieldHint = css({ fontSize: 'xs', color: 'fg.subtle', mt: '1.5' })
+const input = css({
+  w: 'full',
+  h: '9',
+  px: '3',
+  fontSize: 'sm',
+  bg: 'bg.surface',
+  color: 'fg.default',
+  borderWidth: '1px',
+  borderColor: 'border.default',
+  borderRadius: 'md',
+  outline: 'none',
+  _focus: { borderColor: 'accent.default', boxShadow: '0 0 0 3px color-mix(in srgb, var(--colors-accent-default) 18%, transparent)' },
+  _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+})
 
 interface AiTabProps {
   settings: AppSettings
@@ -31,6 +48,48 @@ function ClaudeStatus() {
   )
 }
 
+function SignatureSetting({ settings, onChange }: AiTabProps) {
+  const [draft, setDraft] = useState(settings.reviewSignatureText)
+  useEffect(() => setDraft(settings.reviewSignatureText), [settings.reviewSignatureText])
+  const commit = () => onChange({ reviewSignatureText: draft.trim() || DEFAULT_SIGNATURE })
+
+  return (
+    <div>
+      <span className={fieldLabel}>Signature on AI review comments</span>
+      <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '2', fontSize: 'sm' })}>
+        <Checkbox checked={settings.reviewSignature} onCheckedChange={reviewSignature => onChange({ reviewSignature })} label="Add a signature to AI review comments" />
+        <span className={css({ cursor: 'pointer', userSelect: 'none' })} onClick={() => onChange({ reviewSignature: !settings.reviewSignature })}>Add a signature to AI review comments</span>
+      </span>
+      <input
+        aria-label="Signature text"
+        className={cx(input, css({ mt: '2' }))}
+        disabled={!settings.reviewSignature}
+        maxLength={MAX_SIGNATURE_LENGTH}
+        value={draft}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter')
+            commit()
+        }}
+      />
+      <p className={fieldHint}>
+        {settings.reviewSignature
+          ? 'Added in small text at the end of every comment Claude drafts, when you post it. Edits to a draft never include it, so changing this applies to drafts too.'
+          : 'AI review comments are posted without a signature, so they read like the rest of your review.'}
+        {settings.reviewSignature && settings.reviewSignatureText !== DEFAULT_SIGNATURE && (
+          <>
+            {' '}
+            <button type="button" onClick={() => onChange({ reviewSignatureText: DEFAULT_SIGNATURE })} className={css({ color: 'accent.fg', cursor: 'pointer', _hover: { textDecoration: 'underline' } })}>
+              Use the default text
+            </button>
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
+
 export function AiTab({ settings, onChange }: AiTabProps) {
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '6' })}>
@@ -52,6 +111,7 @@ export function AiTab({ settings, onChange }: AiTabProps) {
             : 'Lines you select are added only when you click Ask Claude in the file header.'}
         </p>
       </div>
+      <SignatureSetting settings={settings} onChange={onChange} />
       <div>
         <span className={fieldLabel}>Full files</span>
         <p className={css({ fontSize: 'sm', color: 'fg.muted' })}>

@@ -1,5 +1,6 @@
 import type { DiffLineAnnotation, FileDiffMetadata, FileDiffOptions, SelectedLineRange } from '@pierre/diffs/react'
 import type { ChatCodeContext, ChatThread } from '../../shared/chat'
+import type { ReviewFinding } from '../../shared/claude-review'
 import type { DiffFile, DiffSide, Discussion } from '../../shared/types'
 import type { OpenSuggestion } from '../lib/chat'
 import type { DiffTextSelection } from '../lib/diff-selection'
@@ -16,6 +17,7 @@ import { parseSuggestionRange } from '../../shared/suggestions'
 import { isSearchableSymbol } from '../../shared/symbols'
 import { api } from '../lib/api'
 import { useChatControls } from '../lib/chat'
+import { useClaudeReviewControls } from '../lib/claude-review'
 import { readDiffTextSelection, sameTextSelection } from '../lib/diff-selection'
 import { GITHUB_THEMES } from '../lib/code-tokens'
 import { useOpenSymbol } from '../lib/symbols'
@@ -23,6 +25,7 @@ import { directoryName, domIdForFile, fileName } from '../lib/format'
 import { useLocalRepo } from '../lib/local-repos'
 import { useSettings } from '../lib/settings'
 import { CommentComposer } from './comment-composer'
+import { FindingCard } from './finding-card'
 import { ImageDiff, isImagePath } from './image-diff'
 import { useReview, useReviewActions } from './review-context'
 import { SuggestionBlock } from './suggestion-block'
@@ -31,6 +34,8 @@ import { CodeBlockRendererContext } from './ui/markdown'
 import { Button, IconButton, WithTooltip } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { FileIcon } from './ui/file-icon'
+
+const NO_FINDINGS: ReviewFinding[] = []
 
 interface DraftTarget {
   side: DiffSide
@@ -41,6 +46,7 @@ interface AnnotationData {
   discussions: Discussion[]
   hasDraft: boolean
   suggestions: OpenSuggestion[]
+  findings: ReviewFinding[]
 }
 
 export interface FileDiffCardProps {
@@ -119,6 +125,9 @@ function FileDiffCardImpl({
   const [loadingLarge, setLoadingLarge] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const chat = useChatControls()
+  const claudeReview = useClaudeReviewControls()
+  const findings = claudeReview?.findingsFor(file.path) ?? NO_FINDINGS
+  const reviewFinishedAt = claudeReview?.state.finishedAt ?? null
   const openSymbol = useOpenSymbol()
   const [lineSelection, setLineSelection] = useState<SelectedLineRange | null>(null)
   const [textSelection, setTextSelection] = useState<DiffTextSelection | null>(null)
@@ -188,7 +197,7 @@ function FileDiffCardImpl({
       const key = `${side}:${line}`
       let annotation = byLine.get(key)
       if (!annotation) {
-        annotation = { side, lineNumber: line, metadata: { discussions: [], hasDraft: false, suggestions: [] } }
+        annotation = { side, lineNumber: line, metadata: { discussions: [], hasDraft: false, suggestions: [], findings: [] } }
         byLine.set(key, annotation)
       }
       return annotation
@@ -201,8 +210,10 @@ function FileDiffCardImpl({
       entry(draft.side, draft.line).metadata.hasDraft = true
     for (const suggestion of suggestions)
       entry('additions', suggestion.line).metadata.suggestions.push(suggestion)
+    for (const finding of findings)
+      entry(finding.side, finding.endLine).metadata.findings.push(finding)
     return [...byLine.values()]
-  }, [discussions, draft, suggestions])
+  }, [discussions, draft, suggestions, findings])
 
   const openDraft = useCallback((range: SelectedLineRange) => {
     const side = range.endSide ?? range.side ?? 'additions'
@@ -239,7 +250,7 @@ function FileDiffCardImpl({
   }), [isOneSided, largeDiff, layout, wrap, theme, openDraft, loadContents, file.isBinary, file.path, chat, selectLines, openSymbol])
 
   const renderAnnotation = useCallback((annotation: DiffLineAnnotation<AnnotationData>) => {
-    const { discussions: threads, hasDraft, suggestions: lineSuggestions } = annotation.metadata
+    const { discussions: threads, hasDraft, suggestions: lineSuggestions, findings: lineFindings } = annotation.metadata
     function renderSuggestion(language: string | null, code: string) {
       const range = parseSuggestionRange(language)
       if (!range || annotation.side !== 'additions')
@@ -259,6 +270,7 @@ function FileDiffCardImpl({
               <ThreadCard discussion={discussion} />
             </div>
           ))}
+          {lineFindings.map(finding => <FindingCard key={finding.id} finding={finding} file={file} finishedAt={reviewFinishedAt} />)}
           {hasDraft && (
             <div className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'accent.default', borderRadius: 'lg', p: '3' })}>
               <CommentComposer
@@ -298,7 +310,7 @@ function FileDiffCardImpl({
         </div>
       </CodeBlockRendererContext>
     )
-  }, [create, file.path, file.diff, lineMap, oldPath, projectUrl, closeSuggestion])
+  }, [create, file, lineMap, oldPath, projectUrl, closeSuggestion, reviewFinishedAt])
 
   useEffect(() => {
     if (!chat || collapsed)
@@ -462,6 +474,14 @@ function FileDiffCardImpl({
           </span>
         )}
         <div className={css({ ml: 'auto', display: 'flex', alignItems: 'center', gap: '3', flexShrink: 0 })}>
+          {findings.length > 0 && (
+            <WithTooltip label={`${findings.length} open ${findings.length === 1 ? 'finding' : 'findings'} from Claude`}>
+              <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', fontSize: 'xs', color: 'accent.fg', '& svg': { w: '3.5', h: '3.5' } })}>
+                <Sparkles />
+                {findings.length}
+              </span>
+            </WithTooltip>
+          )}
           {discussions.length > 0 && (
             <WithTooltip label={`${openCount} open, ${resolvedCount} resolved`}>
               <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', fontSize: 'xs', color: openCount ? 'accent.fg' : 'fg.subtle', '& svg': { w: '3.5', h: '3.5' } })}>

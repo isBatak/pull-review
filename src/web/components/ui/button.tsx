@@ -12,15 +12,30 @@ export function Button({ variant, size, iconOnly, className, type = 'button', ..
 }
 
 const tooltipContent = css({
-  bg: 'fg.default',
-  color: 'bg.canvas',
+  '--arrow-size': '8px',
+  '--arrow-background': 'token(colors.tooltip.bg)',
+  bg: 'tooltip.bg',
+  color: 'tooltip.fg',
+  borderWidth: '1px',
+  borderColor: 'tooltip.border',
   fontSize: 'xs',
+  lineHeight: '1.5',
   px: '2',
   py: '1',
   borderRadius: 'sm',
   boxShadow: 'popover',
   maxW: '64',
   zIndex: 'tooltip',
+  '& strong': { fontWeight: 'semibold', color: 'tooltip.fg' },
+})
+
+const tooltipArrowTip = css({
+  borderColor: 'tooltip.border',
+  borderTopWidth: '1px',
+  borderLeftWidth: '1px',
+  '[data-placement^=top] &': { borderTopWidth: '0', borderLeftWidth: '0', borderBottomWidth: '1px', borderRightWidth: '1px' },
+  '[data-placement^=left] &': { borderLeftWidth: '0', borderBottomWidth: '1px', borderRightWidth: '1px' },
+  '[data-placement^=right] &': { borderTopWidth: '0', borderLeftWidth: '1px', borderBottomWidth: '1px' },
 })
 
 export function WithTooltip({ label, children }: { label: ReactNode, children: ReactNode }) {
@@ -29,7 +44,12 @@ export function WithTooltip({ label, children }: { label: ReactNode, children: R
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Portal>
         <Tooltip.Positioner>
-          <Tooltip.Content className={tooltipContent}>{label}</Tooltip.Content>
+          <Tooltip.Content className={tooltipContent}>
+            <Tooltip.Arrow>
+              <Tooltip.ArrowTip className={tooltipArrowTip} />
+            </Tooltip.Arrow>
+            {label}
+          </Tooltip.Content>
         </Tooltip.Positioner>
       </Portal>
     </Tooltip.Root>

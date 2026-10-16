@@ -103,11 +103,15 @@ export interface MrPayload {
   viewer: User
 }
 
-export interface NewDiffComment {
-  oldPath: string
-  newPath: string
+export interface DiffLinePosition {
   oldLine: number | null
   newLine: number | null
+}
+
+export interface NewDiffComment extends DiffLinePosition {
+  oldPath: string
+  newPath: string
+  range?: { start: DiffLinePosition, end: DiffLinePosition }
 }
 
 export interface FileContentsPair {

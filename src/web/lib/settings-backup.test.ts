@@ -11,6 +11,12 @@ const settings = {
   chatModel: 'opus',
   commitModel: 'sonnet',
   commitEffort: 'medium',
+  reviewModel: 'opus',
+  reviewEffort: 'high',
+  reviewAutoPost: false,
+  reviewMode: 'thorough' as const,
+  reviewSignature: false,
+  reviewSignatureText: 'Drafted with Claude.',
 }
 
 describe('settings backup', () => {

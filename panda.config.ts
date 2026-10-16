@@ -42,6 +42,11 @@ const semanticTokens = defineSemanticTokens({
       fg: { value: { base: '{colors.amber.700}', _dark: '{colors.amber.400}' } },
       subtle: { value: { base: '{colors.amber.50}', _dark: 'rgba(245, 158, 11, 0.12)' } },
     },
+    tooltip: {
+      bg: { value: { base: '#1f2328', _dark: '#262c36' } },
+      fg: { value: { base: '#ffffff', _dark: '#f0f6fc' } },
+      border: { value: { base: '#1f2328', _dark: '#3d444d' } },
+    },
   },
   shadows: {
     popover: {
@@ -174,6 +179,12 @@ export default defineConfig({
           modal: { value: 50 },
           popover: { value: 60 },
           tooltip: { value: 70 },
+        },
+      },
+      keyframes: {
+        shimmer: {
+          from: { backgroundPosition: '100% 0' },
+          to: { backgroundPosition: '-100% 0' },
         },
       },
       semanticTokens,

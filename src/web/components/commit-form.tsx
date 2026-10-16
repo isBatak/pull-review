@@ -8,7 +8,8 @@ import { validateCommits } from '../../shared/commit-plan'
 import { api } from '../lib/api'
 import { useChatAvailable } from '../lib/chat'
 import { fileName } from '../lib/format'
-import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../lib/model-options'
+import { MODEL_OPTIONS } from '../lib/model-options'
+import { EffortSlider } from './ui/effort-slider'
 import { useSettings } from '../lib/settings'
 import { Button, IconButton } from './ui/button'
 import { Select } from './ui/select'
@@ -93,7 +94,7 @@ export function CommitForm({ mrRef, repoPath, branch, files, onDone, onCancel }:
         {chatAvailable && (
           <>
             <Select variant="compact" label="Model for planning commits" value={settings.commitModel} options={MODEL_OPTIONS} disabled={busy} onChange={commitModel => updateSettings({ commitModel })} />
-            <Select variant="compact" label="Effort for planning commits" value={settings.commitEffort} options={EFFORT_OPTIONS} disabled={busy} onChange={commitEffort => updateSettings({ commitEffort })} />
+            <EffortSlider label="Effort for planning commits" value={settings.commitEffort} disabled={busy} onChange={commitEffort => updateSettings({ commitEffort })} />
           </>
         )}
         {chatAvailable && (

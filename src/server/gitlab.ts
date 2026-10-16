@@ -4,6 +4,7 @@ import type {
   BundleArtifactSide,
   BundleSettings,
   DiffFile,
+  DiffLinePosition,
   DiffRefs,
   Discussion,
   FileContentsPair,
@@ -191,6 +192,30 @@ interface RawPipeline {
 
 const PIPELINES_TO_SCAN = 20
 
+async function sha1Hex(text: string) {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function lineType(position: DiffLinePosition) {
+  if (position.oldLine === null)
+    return 'new'
+  if (position.newLine === null)
+    return 'old'
+  return null
+}
+
+async function buildLineRange(oldPath: string, newPath: string, range: { start: DiffLinePosition, end: DiffLinePosition }) {
+  const pathHash = await sha1Hex(newPath || oldPath)
+  const point = (position: DiffLinePosition) => ({
+    line_code: `${pathHash}_${position.oldLine ?? 0}_${position.newLine ?? 0}`,
+    type: lineType(position),
+    old_line: position.oldLine,
+    new_line: position.newLine,
+  })
+  return { start: point(range.start), end: point(range.end) }
+}
+
 export function createRequester(host: string, token: string) {
   const apiBase = `https://${host}/api/v4`
 
@@ -346,23 +371,36 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
     },
 
     async createDiscussion(body, diffRefs, comment) {
-      const payload = comment
-        ? {
-            body,
-            position: {
-              position_type: 'text',
-              base_sha: diffRefs.baseSha,
-              start_sha: diffRefs.startSha,
-              head_sha: diffRefs.headSha,
-              old_path: comment.oldPath,
-              new_path: comment.newPath,
-              ...(comment.oldLine !== null ? { old_line: comment.oldLine } : {}),
-              ...(comment.newLine !== null ? { new_line: comment.newLine } : {}),
-            },
-          }
-        : { body }
-      const raw = await json<RawDiscussion>(`${mrPath}/discussions`, { method: 'POST', body: JSON.stringify(payload) })
-      return normalizeDiscussion(raw)
+      const post = async (lineRange: unknown) => {
+        const payload = comment
+          ? {
+              body,
+              position: {
+                position_type: 'text',
+                base_sha: diffRefs.baseSha,
+                start_sha: diffRefs.startSha,
+                head_sha: diffRefs.headSha,
+                old_path: comment.oldPath,
+                new_path: comment.newPath,
+                ...(comment.oldLine !== null ? { old_line: comment.oldLine } : {}),
+                ...(comment.newLine !== null ? { new_line: comment.newLine } : {}),
+                ...(lineRange ? { line_range: lineRange } : {}),
+              },
+            }
+          : { body }
+        return normalizeDiscussion(await json<RawDiscussion>(`${mrPath}/discussions`, { method: 'POST', body: JSON.stringify(payload) }))
+      }
+      const lineRange = comment?.range ? await buildLineRange(comment.oldPath, comment.newPath, comment.range).catch(() => null) : null
+      if (!lineRange)
+        return post(null)
+      try {
+        return await post(lineRange)
+      }
+      catch (error) {
+        if (error instanceof GitlabError && error.status === 400)
+          return post(null)
+        throw error
+      }
     },
 
     async reply(discussionId, body) {

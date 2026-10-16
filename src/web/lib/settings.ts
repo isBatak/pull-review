@@ -1,4 +1,6 @@
 import type { CategoryConfig } from '../../shared/grouping'
+import type { ReviewMode } from '../../shared/claude-review'
+import { DEFAULT_SIGNATURE } from '../../shared/claude-review'
 import type { BundleSettings, ProjectRef } from '../../shared/types'
 import { useCallback, useMemo } from 'react'
 import { createClassifier, DEFAULT_CATEGORIES } from '../../shared/grouping'
@@ -31,6 +33,12 @@ export interface AppSettings {
   chatEffort: string
   commitModel: string
   commitEffort: string
+  reviewModel: string
+  reviewEffort: string
+  reviewAutoPost: boolean
+  reviewMode: ReviewMode
+  reviewSignature: boolean
+  reviewSignatureText: string
   editor: string
 }
 
@@ -56,6 +64,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chatEffort: '',
   commitModel: 'haiku',
   commitEffort: 'low',
+  reviewModel: '',
+  reviewEffort: '',
+  reviewAutoPost: false,
+  reviewMode: 'focused',
+  reviewSignature: true,
+  reviewSignatureText: DEFAULT_SIGNATURE,
   editor: 'auto',
 }
 
@@ -64,6 +78,11 @@ export function useSettings() {
   const settings = { ...DEFAULT_SETTINGS, ...stored, bundle: { ...DEFAULT_BUNDLE_SETTINGS, ...stored.bundle } }
   const update = useCallback((patch: Partial<AppSettings>) => setStored({ ...settings, ...patch }), [settings, setStored])
   return [settings, update] as const
+}
+
+export function useReviewSignature() {
+  const [settings] = useSettings()
+  return settings.reviewSignature ? (settings.reviewSignatureText.trim() || DEFAULT_SIGNATURE) : null
 }
 
 export function useClassifier() {

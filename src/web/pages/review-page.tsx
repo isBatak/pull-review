@@ -9,6 +9,7 @@ import { BundlePanel } from '../components/bundle/bundle-panel'
 import { LocalChangesPanel } from '../components/local-changes-panel'
 import { ChatPanel } from '../components/chat/chat-panel'
 import { FileDiffCard } from '../components/file-diff-card'
+import { FindingNavigator } from '../components/finding-navigator'
 import { LocalCheckoutChip } from '../components/local-checkout-chip'
 import { SymbolPopover } from '../components/symbol-popover'
 import { MrHeader } from '../components/mr-header'
@@ -21,6 +22,7 @@ import { UnderlineTabs } from '../components/ui/underline-tabs'
 import { useDiscussions, useMergeRequest } from '../hooks/use-merge-request'
 import { ApiError } from '../lib/api'
 import { ChatContext, ChatDraftContext, useChatAvailable, useChatState } from '../lib/chat'
+import { ClaudeReviewContext, useClaudeReview } from '../lib/claude-review'
 import { useLocalChanges, useLocalRepo } from '../lib/local-repos'
 import { SymbolContext } from '../lib/symbols'
 import type { SymbolRequest } from '../lib/symbols'
@@ -207,6 +209,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
   const [chatOpen, setChatOpen] = useStoredState('pull-review:chat-open', false)
   const { controls: chatControls, draft: chatDraft } = useChatState(chatAvailable && chatOpen, setChatOpen, settings.chatSelection === 'automatic')
   const closeChat = useCallback(() => setChatOpen(false), [setChatOpen])
+  const claudeReview = useClaudeReview(mrRef, payload.mergeRequest.diffRefs.headSha, chatAvailable)
   const [symbolRequest, setSymbolRequest] = useState<SymbolRequest | null>(null)
   const closeSymbol = useCallback(() => setSymbolRequest(null), [])
   const localRepo = useLocalRepo(mrRef)
@@ -241,6 +244,38 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
     revealDiffLine(domIdForFile(file.id), line)
   }, [setCollapsed, setParam])
 
+  const findingTargets = useMemo(() => {
+    if (!claudeReview.current)
+      return []
+    const order = new Map(orderedFiles.map((file, index) => [file.path, { file, index }]))
+    return claudeReview.state.findings
+      .filter(finding => finding.status !== 'dismissed')
+      .flatMap((finding) => {
+        const entry = order.get(finding.path)
+        return entry ? [{ id: finding.id, file: entry.file, fileIndex: entry.index, line: finding.endLine }] : []
+      })
+      .sort((a, b) => a.fileIndex - b.fileIndex || a.line - b.line)
+  }, [claudeReview.current, claudeReview.state.findings, orderedFiles])
+
+  const [activeFindingId, setActiveFindingId] = useState<string | null>(null)
+  const activeFindingIndex = findingTargets.findIndex(target => target.id === activeFindingId)
+
+  const jumpToFinding = useCallback((index: number) => {
+    const target = findingTargets[index]
+    if (!target)
+      return
+    setActiveFindingId(target.id)
+    if (!visibleGroups.some(group => group.files.includes(target.file)))
+      setParam('group', null)
+    revealLine(target.file, target.line)
+  }, [findingTargets, revealLine, visibleGroups, setParam])
+
+  const jumpToFindingId = useCallback((id: string) => {
+    jumpToFinding(findingTargets.findIndex(target => target.id === id))
+  }, [jumpToFinding, findingTargets])
+
+  const claudeReviewControls = useMemo(() => ({ ...claudeReview, jumpTo: jumpToFindingId }), [claudeReview, jumpToFindingId])
+
   const context = useMemo(() => ({
     mergeRequest: payload.mergeRequest,
     files: payload.files,
@@ -260,157 +295,166 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
   return (
     <ReviewContext value={context}>
       <ChatContext value={chatAvailable ? chatControls : null}>
-        <SymbolContext value={setSymbolRequest}>
-          <div className={css({ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gridTemplateColumns: 'minmax(0, 1fr)', h: '100dvh' })}>
-            <MrHeader
-              files={payload.files}
-              layout={layout}
-              onLayoutChange={setLayout}
-              wrap={wrap}
-              onWrapChange={setWrap}
-              theme={theme}
-              onThemeChange={setTheme}
-              refreshing={mrQuery.isFetching || discussionsQuery.isFetching}
-              onRefresh={() => {
-                void mrQuery.refetch()
-                void discussionsQuery.refetch()
-              }}
-              onOpenSettings={() => setSettingsOpen(true)}
-          localStatus={(
-            <LocalCheckoutChip
-              mrRef={mrRef}
-              headSha={payload.mergeRequest.diffRefs.headSha}
-              onSetUp={() => setSettingsOpen(true)}
-            />
-          )}
-              chatOpen={chatAvailable ? chatControls.open : null}
-              onChatOpenChange={setChatOpen}
-            />
-            <ResizableLayout
-              aside={chatControls.open ? <ChatDraftContext value={chatDraft}><ChatPanel mrRef={mrRef} baseUrl={context.projectUrl} /></ChatDraftContext> : null}
-              onAsideClose={closeChat}
-              sidebar={(
-                <Sidebar
-                  groups={visibleGroups}
-                  allFiles={orderedFiles}
-                  showGroups={!useGroupTabs}
-                  statusOf={statusOf}
-                  openThreadsByFile={openThreadsByFile}
-                  onSelectFile={selectFile}
-                  onReviewedChange={markReviewed}
-                />
-              )}
-            >
-              <div className={css({ display: 'flex', flexDir: 'column', minH: '0', minW: '0' })}>
-                <div className={css({ flexShrink: 0, px: '4', borderBottomWidth: '1px', borderColor: 'border.default', bg: 'bg.surface' })}>
-                  <UnderlineTabs
-                    label="Review sections"
-                    value={tab}
-                    onChange={value => setParam('tab', value === 'code' ? null : value)}
-                    tabs={[
-                      { value: 'code', label: 'Code', count: payload.files.length },
-                      {
-                        value: 'overview',
-                        label: 'Overview',
-                        count: overviewThreadCount || null,
-                        badge: unresolvedOverviewCount > 0 && <span aria-label={`${unresolvedOverviewCount} unresolved`} className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'accent.default' })} />,
-                      },
-                      { value: 'bundle', label: 'Bundle' },
-                      ...(localRepo.path ? [{ value: 'local' as const, label: 'Local changes', count: localChangeCount || null }] : []),
-                    ]}
-                  />
-                  {useGroupTabs && tab === 'code' && groups.length > 1 && (
-                    <UnderlineTabs
-                      label="File groups"
-                      size="sm"
-                      value={activeGroupKey}
-                      onChange={value => setParam('group', value === 'all' ? null : value)}
-                      tabs={[
-                        { value: 'all', label: 'All files', count: payload.files.length },
-                        ...groups.map(group => ({ value: group.key, label: group.label, count: group.files.length })),
-                      ]}
-                      className={css({ borderTopWidth: '1px', borderColor: 'border.subtle' })}
-                    />
-                  )}
-                </div>
-                {tab === 'local' && localRepo.path && (
-                  <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                    <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
-                      <LocalChangesPanel mrRef={mrRef} repoPath={localRepo.path} />
-                    </div>
-                  </div>
-                )}
-                {tab === 'bundle' && (
-                  <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                    <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
-                      <BundlePanel mrRef={mrRef} />
-                    </div>
-                  </div>
-                )}
-                {tab === 'overview'
-                  ? (
-                      <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                        <div className={css({ maxW: '960px', mx: 'auto', p: '6' })}>
-                          {discussionsQuery.error && (
-                            <div className={css({ color: 'danger.fg', fontSize: 'sm', mb: '4' })}>
-                              Could not load comments:
-                              {' '}
-                              {discussionsQuery.error.message}
-                            </div>
-                          )}
-                          <OverviewPanel general={sorted.general} detached={sorted.detached} />
-                        </div>
-                      </div>
-                    )
-                  : tab === 'code' && (
-                      <Virtualizer
-                        className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}
-                        contentClassName={css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', maxW: '1600px', mx: 'auto' })}
-                      >
-                        {visibleGroups.map((group, index) => (
-                          <div key={group.key} className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
-                            {(!useGroupTabs || activeGroupKey === 'all') && (
-                              <div className={css({ display: 'flex', alignItems: 'baseline', gap: '2' })} style={{ marginTop: index === 0 ? 0 : 16 }}>
-                                <h2 className={css({ fontSize: 'sm', fontWeight: 'semibold' })}>{group.label}</h2>
-                                <span className={css({ fontSize: 'xs', color: 'fg.subtle' })}>{group.description}</span>
-                              </div>
-                            )}
-                            {group.files.map(file => (
-                              <FileDiffCard
-                                key={file.id}
-                                file={file}
-                                discussions={sorted.byFile.get(file.path) ?? EMPTY}
-                                status={statusOf(file)}
-                                collapsed={isCollapsed(file)}
-                                layout={layout}
-                                wrap={wrap}
-                                theme={theme}
-                                onToggleCollapsed={toggleCollapsed}
-                                onReviewedChange={markOneReviewed}
-                              />
-                            ))}
-                          </div>
-                        ))}
-                        {orderedFiles.length === 0 && <div className={css({ color: 'fg.muted', p: '8', textAlign: 'center' })}>This merge request has no changes.</div>}
-                      </Virtualizer>
-                    )}
-              </div>
-            </ResizableLayout>
-            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} onChange={updateSettings} />
-            {symbolRequest && (
-              <SymbolPopover
-                request={symbolRequest}
-                mrRef={mrRef}
-                sha={payload.mergeRequest.diffRefs.headSha}
-                projectUrl={context.projectUrl}
+        <ClaudeReviewContext value={chatAvailable ? claudeReviewControls : null}>
+          <SymbolContext value={setSymbolRequest}>
+            <div className={css({ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gridTemplateColumns: 'minmax(0, 1fr)', h: '100dvh' })}>
+              <MrHeader
                 files={payload.files}
-                repoPath={localRepo.path}
-                onReveal={revealLine}
-                onClose={closeSymbol}
+                layout={layout}
+                onLayoutChange={setLayout}
+                wrap={wrap}
+                onWrapChange={setWrap}
+                theme={theme}
+                onThemeChange={setTheme}
+                refreshing={mrQuery.isFetching || discussionsQuery.isFetching}
+                onRefresh={() => {
+                  void mrQuery.refetch()
+                  void discussionsQuery.refetch()
+                }}
+                onOpenSettings={() => setSettingsOpen(true)}
+            localStatus={(
+              <LocalCheckoutChip
+                mrRef={mrRef}
+                headSha={payload.mergeRequest.diffRefs.headSha}
+                onSetUp={() => setSettingsOpen(true)}
               />
             )}
-          </div>
-        </SymbolContext>
+                chatOpen={chatAvailable ? chatControls.open : null}
+                onChatOpenChange={setChatOpen}
+              />
+              <ResizableLayout
+                aside={chatControls.open ? <ChatDraftContext value={chatDraft}><ChatPanel mrRef={mrRef} baseUrl={context.projectUrl} /></ChatDraftContext> : null}
+                onAsideClose={closeChat}
+                sidebar={(
+                  <Sidebar
+                    groups={visibleGroups}
+                    allFiles={orderedFiles}
+                    showGroups={!useGroupTabs}
+                    statusOf={statusOf}
+                    openThreadsByFile={openThreadsByFile}
+                    onSelectFile={selectFile}
+                    onReviewedChange={markReviewed}
+                  />
+                )}
+              >
+                <div className={css({ display: 'flex', flexDir: 'column', minH: '0', minW: '0' })}>
+                  <div className={css({ flexShrink: 0, px: '4', borderBottomWidth: '1px', borderColor: 'border.default', bg: 'bg.surface' })}>
+                    <div className={css({ display: 'flex', alignItems: 'center', gap: '3' })}>
+                      <UnderlineTabs
+                        label="Review sections"
+                        value={tab}
+                        onChange={value => setParam('tab', value === 'code' ? null : value)}
+                        tabs={[
+                          { value: 'code', label: 'Code', count: payload.files.length },
+                          {
+                            value: 'overview',
+                            label: 'Overview',
+                            count: overviewThreadCount || null,
+                            badge: unresolvedOverviewCount > 0 && <span aria-label={`${unresolvedOverviewCount} unresolved`} className={css({ w: '1.5', h: '1.5', borderRadius: 'full', bg: 'accent.default' })} />,
+                          },
+                          { value: 'bundle', label: 'Bundle' },
+                          ...(localRepo.path ? [{ value: 'local' as const, label: 'Local changes', count: localChangeCount || null }] : []),
+                        ]}
+                      />
+                      {tab === 'code' && findingTargets.length > 0 && (
+                        <div className={css({ ml: 'auto', flexShrink: 0 })}>
+                          <FindingNavigator count={findingTargets.length} index={activeFindingIndex} onJump={jumpToFinding} />
+                        </div>
+                      )}
+                    </div>
+                    {useGroupTabs && tab === 'code' && groups.length > 1 && (
+                      <UnderlineTabs
+                        label="File groups"
+                        size="sm"
+                        value={activeGroupKey}
+                        onChange={value => setParam('group', value === 'all' ? null : value)}
+                        tabs={[
+                          { value: 'all', label: 'All files', count: payload.files.length },
+                          ...groups.map(group => ({ value: group.key, label: group.label, count: group.files.length })),
+                        ]}
+                        className={css({ borderTopWidth: '1px', borderColor: 'border.subtle' })}
+                      />
+                    )}
+                  </div>
+                  {tab === 'local' && localRepo.path && (
+                    <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
+                      <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
+                        <LocalChangesPanel mrRef={mrRef} repoPath={localRepo.path} />
+                      </div>
+                    </div>
+                  )}
+                  {tab === 'bundle' && (
+                    <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
+                      <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
+                        <BundlePanel mrRef={mrRef} />
+                      </div>
+                    </div>
+                  )}
+                  {tab === 'overview'
+                    ? (
+                        <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
+                          <div className={css({ maxW: '960px', mx: 'auto', p: '6' })}>
+                            {discussionsQuery.error && (
+                              <div className={css({ color: 'danger.fg', fontSize: 'sm', mb: '4' })}>
+                                Could not load comments:
+                                {' '}
+                                {discussionsQuery.error.message}
+                              </div>
+                            )}
+                            <OverviewPanel general={sorted.general} detached={sorted.detached} />
+                          </div>
+                        </div>
+                      )
+                    : tab === 'code' && (
+                        <Virtualizer
+                          className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}
+                          contentClassName={css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', maxW: '1600px', mx: 'auto' })}
+                        >
+                            {visibleGroups.map((group, index) => (
+                            <div key={group.key} className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
+                              {(!useGroupTabs || activeGroupKey === 'all') && (
+                                <div className={css({ display: 'flex', alignItems: 'baseline', gap: '2' })} style={{ marginTop: index === 0 ? 0 : 16 }}>
+                                  <h2 className={css({ fontSize: 'sm', fontWeight: 'semibold' })}>{group.label}</h2>
+                                  <span className={css({ fontSize: 'xs', color: 'fg.subtle' })}>{group.description}</span>
+                                </div>
+                              )}
+                              {group.files.map(file => (
+                                <FileDiffCard
+                                  key={file.id}
+                                  file={file}
+                                  discussions={sorted.byFile.get(file.path) ?? EMPTY}
+                                  status={statusOf(file)}
+                                  collapsed={isCollapsed(file)}
+                                  layout={layout}
+                                  wrap={wrap}
+                                  theme={theme}
+                                  onToggleCollapsed={toggleCollapsed}
+                                  onReviewedChange={markOneReviewed}
+                                />
+                              ))}
+                            </div>
+                          ))}
+                          {orderedFiles.length === 0 && <div className={css({ color: 'fg.muted', p: '8', textAlign: 'center' })}>This merge request has no changes.</div>}
+                        </Virtualizer>
+                      )}
+                </div>
+              </ResizableLayout>
+              <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} onChange={updateSettings} />
+              {symbolRequest && (
+                <SymbolPopover
+                  request={symbolRequest}
+                  mrRef={mrRef}
+                  sha={payload.mergeRequest.diffRefs.headSha}
+                  projectUrl={context.projectUrl}
+                  files={payload.files}
+                  repoPath={localRepo.path}
+                  onReveal={revealLine}
+                  onClose={closeSymbol}
+                />
+              )}
+            </div>
+          </SymbolContext>
+        </ClaudeReviewContext>
       </ChatContext>
     </ReviewContext>
   )

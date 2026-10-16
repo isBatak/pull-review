@@ -7,6 +7,42 @@ import { css, cx } from 'styled-system/css'
 
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 
+const INLINE_TAGS = new Set(['sub', 'sup'])
+
+interface MarkdownNode {
+  type: string
+  value?: string
+  children?: MarkdownNode[]
+  data?: { hName?: string }
+}
+
+function tagOf(node: MarkdownNode, closing: boolean) {
+  const match = node.type === 'html' ? /^<(\/?)([a-z]+)>$/i.exec(node.value?.trim() ?? '') : null
+  const name = match?.[2]?.toLowerCase()
+  return match && name && INLINE_TAGS.has(name) && Boolean(match[1]) === closing ? name : null
+}
+
+function wrapInlineTags(node: MarkdownNode) {
+  const children = node.children
+  if (!children)
+    return
+  for (let index = 0; index < children.length; index++) {
+    const name = tagOf(children[index]!, false)
+    if (!name)
+      continue
+    const end = children.findIndex((child, position) => position > index && tagOf(child, true) === name)
+    if (end === -1)
+      continue
+    children.splice(index, end - index + 1, { type: 'emphasis', data: { hName: name }, children: children.slice(index + 1, end) })
+  }
+  children.forEach(wrapInlineTags)
+}
+
+// GitLab renders a few inline HTML tags in comments; turning only these into elements keeps all other HTML escaped.
+function remarkInlineTags() {
+  return wrapInlineTags
+}
+
 const prose = css({
   fontSize: 'sm',
   lineHeight: '1.6',
@@ -24,6 +60,7 @@ const prose = css({
   '& th, & td': { borderWidth: '1px', borderColor: 'border.default', px: '2', py: '1' },
   '& img': { maxW: 'full', borderRadius: 'md' },
   '& input[type=checkbox]': { mr: '1.5' },
+  '& sub': { fontSize: 'xs', color: 'fg.subtle', verticalAlign: 'baseline' },
 })
 
 export type CodeBlockRenderer = (language: string | null, code: string) => ReactNode | null
@@ -54,7 +91,7 @@ export function Markdown({ children, className, baseUrl, renderCodeBlock }: { ch
   return (
     <div className={cx(prose, className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkInlineTags]}
         urlTransform={url => defaultUrlTransform(baseUrl && url.startsWith('/') ? `${baseUrl}${url}` : url)}
         components={components}
       >

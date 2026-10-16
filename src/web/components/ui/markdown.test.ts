@@ -14,4 +14,12 @@ describe('Markdown', () => {
     expect(html).toContain('href="https://example.com"')
     expect(html).toContain('href="https://gitlab.example.com/group/project/-/issues/1"')
   })
+
+  it('renders paired sub and sup tags and keeps other HTML escaped', () => {
+    const html = renderToStaticMarkup(createElement(Markdown, { children: 'Text\n\n<sub>Found by **Claude**.</sub> x<sup>2</sup> <b>no</b> <sub>open' }))
+    expect(html).toContain('<sub>Found by <strong>Claude</strong>.</sub>')
+    expect(html).toContain('<sup>2</sup>')
+    expect(html).toContain('&lt;b&gt;no&lt;/b&gt;')
+    expect(html).toContain('&lt;sub&gt;open')
+  })
 })

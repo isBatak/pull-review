@@ -39,6 +39,8 @@ export interface ChatMessage {
   tools: ChatToolUse[]
   status: ChatMessageStatus
   error: string | null
+  startedAt?: string
+  finishedAt?: string
 }
 
 export type ChatWorkspace =

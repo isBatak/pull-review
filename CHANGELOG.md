@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.7 (2026-10-16)
+
+### Review with Claude
+
+- New Review tab in the Claude sidebar. Claude reviews the merge request and adds draft comments on the exact lines, like Copilot or CodeRabbit.
+- Edit and preview each draft, then post it or post them all. Comments are posted from your account, in [Conventional Comments](https://conventionalcomments.org/) style, with a GitLab suggestion when the fix fits.
+- Choose Focused (real problems only) or Thorough (also nitpicks, typos and praise), and the model and effort.
+- Jump between findings with the up and down arrows next to the tabs.
+- Settings, AI: turn the "Found by Claude" signature on or off, or change its text.
+
+### Other changes
+
+- Chat answers and reviews show Claude's steps as a timeline.
+- The effort picker is a small slider.
+- Tooltips are dark in the dark theme and have an arrow.
+- Small text (`<sub>`) in comments no longer shows as raw tags.
+
 ## 0.2.6 (2026-10-13)
 
 ### Claude chat

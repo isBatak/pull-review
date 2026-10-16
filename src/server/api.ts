@@ -5,6 +5,9 @@ import type { ChatService } from './chat/service'
 import type { GitlabClient } from './gitlab'
 import type { LocalHost } from './local/host'
 import { Hono } from 'hono'
+import type { FindingStatus } from '../shared/claude-review'
+import { isReviewMode, readSignature } from '../shared/claude-review'
+import { ReviewError } from './chat/review'
 import { ChatError } from './chat/service'
 import { EditorError, editorStatus, openInEditor } from './local/editor'
 import { createGitTools, expandHome, GitError } from './local/git'
@@ -81,7 +84,7 @@ function readIds(value: string | undefined): number[] {
 }
 
 function errorResponse(c: Context, error: unknown) {
-  if (error instanceof GitlabError || error instanceof ChatError)
+  if (error instanceof GitlabError || error instanceof ChatError || error instanceof ReviewError)
     return c.json({ error: error.message }, error.status as 400)
   if (error instanceof GitError || error instanceof EditorError)
     return c.json({ error: error.message }, 400)
@@ -436,6 +439,49 @@ export function createApi(options: ApiOptions) {
   api.post('/mr/chat/stop', async c => c.json(await chatService().stop(chatRef(c))))
 
   api.post('/mr/chat/reset', async c => c.json(await chatService().reset(chatRef(c))))
+
+  api.use('/mr/review/*', async (c, next) => {
+    if (!options.chat || !await options.chat.available())
+      return c.json({ error: 'Claude Code is not installed.' }, 404)
+    await next()
+  })
+
+  api.get('/mr/review/state', async (c) => {
+    const since = Number(c.req.query('since')) || 0
+    const wait = Number(c.req.query('wait')) || 0
+    return c.json(await chatService().reviewState(chatRef(c), since, wait))
+  })
+
+  api.post('/mr/review/run', async (c) => {
+    const input = await c.req.json<{ repoPath?: string | null, model?: string, effort?: string, post?: boolean, mode?: string, signature?: string | null }>()
+    const client = c.var.client
+    return c.json(await chatService().runReview(chatRef(c), loadSnapshot(client), {
+      repoPath: input.repoPath ?? null,
+      model: String(input.model ?? ''),
+      effort: String(input.effort ?? ''),
+      post: input.post === true,
+      mode: isReviewMode(input.mode) ? input.mode : 'focused',
+      signature: readSignature(input.signature),
+    }, async (body, diffRefs, comment) => {
+      await client.createDiscussion(body, diffRefs, comment)
+    }))
+  })
+
+  api.post('/mr/review/stop', async c => c.json(await chatService().stopReview(chatRef(c))))
+
+  api.post('/mr/review/findings', async (c) => {
+    const { ids, status } = await c.req.json<{ ids: string[], status: FindingStatus }>()
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string'))
+      return c.json({ error: 'Expected ids and status' }, 400)
+    return c.json(await chatService().setFindingStatus(chatRef(c), ids, status))
+  })
+
+  api.post('/mr/review/findings/draft', async (c) => {
+    const { id, draft } = await c.req.json<{ id: string, draft: string | null }>()
+    if (typeof id !== 'string' || (draft !== null && typeof draft !== 'string'))
+      return c.json({ error: 'Expected id and draft' }, 400)
+    return c.json(await chatService().setFindingDraft(chatRef(c), id, draft))
+  })
 
   api.onError((error, c) => errorResponse(c, error))
   app.route('/api', api)

@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatPromptSection, ChatPromptView, ChatSendInput, ChatState, ChatWorkspace } from '../../shared/chat'
 import type { DiffFile, Discussion, MergeRequest, MrRef } from '../../shared/types'
 import type { CommitPlan, CommitPlanInput } from '../../shared/commit-plan'
+import type { FindingStatus, ReviewRunInput, ReviewRunState } from '../../shared/claude-review'
 import type { LocalHost, StreamedProcess } from '../local/host'
 import type { SavedChat, SentPrompt } from './saved-chat'
 import { buildContextUpdateNote, buildDiscussionsSummary, buildMrSummary, buildPatch, buildPrompt, buildSystemPrompt, chatModelArgs, EMPTY_CHAT_STATE, fileDiffName } from '../../shared/chat'
@@ -12,6 +13,8 @@ import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, n
 import { readLocalChanges } from '../local/changes'
 import { createGitTools } from '../local/git'
 import { MAX_SENT_PROMPTS, packSent, rememberSent, unpackSent } from './saved-chat'
+import type { PostComment } from './review'
+import { createReviewRunner } from './review'
 import { createWorkspaces } from './workspace'
 
 const IDLE_LIMIT_MS = 30 * 60_000
@@ -80,6 +83,11 @@ export interface ChatService {
   stop: (ref: MrRef) => Promise<ChatState>
   planCommits: (ref: MrRef, input: CommitPlanInput & { title: string, branch: string }) => Promise<CommitPlan>
   reset: (ref: MrRef) => Promise<ChatState>
+  reviewState: (ref: MrRef, since: number, waitMs: number) => Promise<ReviewRunState>
+  runReview: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ReviewRunInput, postComment: PostComment) => Promise<ReviewRunState>
+  stopReview: (ref: MrRef) => Promise<ReviewRunState>
+  setFindingStatus: (ref: MrRef, ids: string[], status: FindingStatus) => Promise<ReviewRunState>
+  setFindingDraft: (ref: MrRef, id: string, draft: string | null) => Promise<ReviewRunState>
   dispose: () => Promise<void>
 }
 
@@ -95,6 +103,13 @@ export function createChatService(host: LocalHost): ChatService {
   const sessions = new Map<string, Session>()
   const workspaces = createWorkspaces(host)
   const claudePath = findExecutable(host, 'claude', [`${host.homeDir}/.local/bin`, `${host.homeDir}/.claude/local`])
+
+  const reviews = createReviewRunner({
+    host,
+    claudePath,
+    claudeEnv,
+    reviewFile: ref => reviewFileIn(workspaces.chatDir(ref)),
+  })
 
   void workspaces.sweepStale()
   void sweepOldChats()
@@ -119,6 +134,10 @@ export function createChatService(host: LocalHost): ChatService {
   }
 
   const loading = new Map<string, Promise<Session>>()
+
+  function reviewFileIn(dir: string) {
+    return `${dir}/review.json`
+  }
 
   function savedChatFile(ref: MrRef) {
     return `${workspaces.chatDir(ref)}/chat.json`
@@ -210,7 +229,8 @@ export function createChatService(host: LocalHost): ChatService {
     for (const name of await host.listDir(workspaces.chatsRoot)) {
       const dir = `${workspaces.chatsRoot}/${name}`
       const saved = await readSavedChat(`${dir}/chat.json`)
-      if (saved && saved.updatedAt >= cutoff)
+      const reviewedAt = await reviews.updatedAt(reviewFileIn(dir))
+      if (Math.max(saved?.updatedAt ?? 0, reviewedAt ?? 0) >= cutoff)
         continue
       await host.remove(claudeProjectDirFor(`${dir}/context`)).catch(() => null)
       await host.remove(dir).catch(() => null)
@@ -389,6 +409,7 @@ export function createChatService(host: LocalHost): ChatService {
       fail(errorMessage(error))
     }
     finally {
+      reply.finishedAt ??= new Date().toISOString()
       if (promptFile)
         await host.remove(promptFile).catch(() => null)
       await persist(session)
@@ -450,7 +471,7 @@ export function createChatService(host: LocalHost): ChatService {
         throw new ChatError(409, 'Claude is still answering. Wait for it to finish or stop it.')
       const question: ChatMessage = { id: createId(), role: 'user', text: input.text.trim(), contexts: input.contexts, tools: [], status: 'done', error: null }
       session.messages.push(question)
-      const reply: ChatMessage = { id: createId(), role: 'assistant', text: '', contexts: [], tools: [], status: 'streaming', error: null }
+      const reply: ChatMessage = { id: createId(), role: 'assistant', text: '', contexts: [], tools: [], status: 'streaming', error: null, startedAt: new Date().toISOString() }
       session.messages.push(reply)
       changed(session)
       void persist(session)
@@ -549,8 +570,10 @@ export function createChatService(host: LocalHost): ChatService {
     async stop(ref) {
       const session = await sessionFor(ref)
       for (const message of session.messages) {
-        if (message.status === 'streaming')
+        if (message.status === 'streaming') {
           message.status = 'stopped'
+          message.finishedAt = new Date().toISOString()
+        }
       }
       session.turn?.kill()
       changed(session)
@@ -574,8 +597,32 @@ export function createChatService(host: LocalHost): ChatService {
       return snapshot(session)
     },
 
+    reviewState: (ref, since, waitMs) => reviews.state(ref, since, waitMs),
+
+    runReview: (ref, load, input, postComment) => reviews.run(ref, input, async () => {
+      const session = await sessionFor(ref)
+      const mr = await load()
+      const { dir } = await writeContext(session, mr)
+      await ensureWorkspace(session, input.repoPath, mr.mergeRequest.diffRefs.headSha)
+      return {
+        contextDir: dir,
+        worktreeDir: session.workspace.kind === 'ready' ? session.worktreeDir : null,
+        title: mr.mergeRequest.title,
+        headSha: mr.mergeRequest.diffRefs.headSha,
+        diffRefs: mr.mergeRequest.diffRefs,
+        files: mr.files,
+      }
+    }, postComment),
+
+    stopReview: ref => reviews.stop(ref),
+
+    setFindingStatus: (ref, ids, status) => reviews.setFindingStatus(ref, ids, status),
+
+    setFindingDraft: (ref, id, draft) => reviews.setFindingDraft(ref, id, draft),
+
     async dispose() {
       clearInterval(idleTimer)
+      reviews.dispose()
       for (const session of [...sessions.values()])
         await disposeSession(session)
       await workspaces.removeAll().catch(() => null)

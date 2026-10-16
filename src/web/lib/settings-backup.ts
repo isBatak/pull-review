@@ -1,4 +1,5 @@
 import type { CategoryConfig } from '../../shared/grouping'
+import { isReviewMode, MAX_SIGNATURE_LENGTH } from '../../shared/claude-review'
 import type { AppSettings, Team } from './settings'
 import { CHAT_EFFORTS, CHAT_MODELS } from '../../shared/chat'
 import { DEFAULT_BUNDLE_SETTINGS, DEFAULT_SETTINGS, TEAM_COLORS } from './settings'
@@ -123,6 +124,18 @@ export function parseBackup(text: string): ParsedBackup {
     settings.commitModel = raw.commitModel as string
   if (CHAT_EFFORTS.some(option => option.id === raw.commitEffort))
     settings.commitEffort = raw.commitEffort as string
+  if (CHAT_MODELS.some(option => option.id === raw.reviewModel))
+    settings.reviewModel = raw.reviewModel as string
+  if (CHAT_EFFORTS.some(option => option.id === raw.reviewEffort))
+    settings.reviewEffort = raw.reviewEffort as string
+  if (typeof raw.reviewAutoPost === 'boolean')
+    settings.reviewAutoPost = raw.reviewAutoPost
+  if (isReviewMode(raw.reviewMode))
+    settings.reviewMode = raw.reviewMode
+  if (typeof raw.reviewSignature === 'boolean')
+    settings.reviewSignature = raw.reviewSignature
+  if (typeof raw.reviewSignatureText === 'string' && raw.reviewSignatureText.trim())
+    settings.reviewSignatureText = raw.reviewSignatureText.slice(0, MAX_SIGNATURE_LENGTH)
 
   if (isRecord(raw.localRepos)) {
     settings.localRepos = Object.fromEntries(
