@@ -1,9 +1,13 @@
 # Changelog
 
+## 0.2.13 (2026-10-19)
+
+- Type `/clear` in the chat to start a new conversation, like the New conversation button. `/new` and `/reset` work too. Before, Claude got it as a message.
+
 ## 0.2.12 (2026-10-19)
 
 - Make the whole app bigger or smaller with ⌘+, ⌘− and ⌘0 (Ctrl on Windows and Linux), or pick a size in Settings, General, Interface size.
-- Filter merge requests from the search box, like on GitHub. Type -approved-by:@me to see what you still need to approve. It suggests filters as you type, and the ? lists them all.
+- Filter merge requests from the search box, like on GitHub. Type `-approved-by:@me` to see what you still need to approve. It suggests filters as you type, and the ? lists them all.
 
 ## 0.2.11 (2026-10-16)
 

@@ -45,6 +45,8 @@ const SUGGESTIONS = [
   'Explain how the main change works',
 ]
 
+const RESET_COMMANDS = new Set(['/clear', '/new', '/reset'])
+
 const spinner = css({ animation: 'spin', flexShrink: 0 })
 
 function describeThreads(count: number) {
@@ -508,7 +510,20 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
       inputRef.current?.focus()
   }, [chatDraft.contexts.length])
 
+  async function resetConversation() {
+    setError(null)
+    try {
+      apply(await api.chatReset(mrRef))
+      setDraft('')
+    }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
   async function send(text: string) {
+    if (!sending && RESET_COMMANDS.has(text.trim().toLowerCase()))
+      return resetConversation()
     if (!text.trim() || sending || state.running)
       return
     setSending(true)
@@ -552,7 +567,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           ]}
         />
         {tab === 'chat' && (
-          <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void api.chatReset(mrRef).then(apply)}>
+          <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void resetConversation()}>
             <RotateCcw />
           </IconButton>
         )}
