@@ -258,7 +258,21 @@ export function createRequester(host: string, token: string) {
     return items
   }
 
-  return { request, json, paginate }
+  async function graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const response = await fetch(`https://${host}/api/graphql`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    })
+    if (!response.ok)
+      throw new GitlabError(response.status, `GitLab ${response.status}: ${response.statusText}`)
+    const result = await response.json() as { data?: T, errors?: { message: string }[] }
+    if (result.errors?.length || !result.data)
+      throw new GitlabError(response.status, `GitLab GraphQL: ${result.errors?.map(error => error.message).join(', ') ?? 'no data'}`)
+    return result.data
+  }
+
+  return { request, json, paginate, graphql }
 }
 
 export function createGitlabClient(ref: MrRef, token: string): GitlabClient {

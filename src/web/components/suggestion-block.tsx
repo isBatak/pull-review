@@ -6,12 +6,7 @@ import { useMemo } from 'react'
 import { css } from 'styled-system/css'
 import { GITHUB_THEMES } from '../lib/code-tokens'
 import { useTheme } from '../lib/preferences'
-
-const diffStyle = {
-  '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
-  '--diffs-font-size': '12px',
-  '--diffs-line-height': '20px',
-} as React.CSSProperties
+import { useCodeStyle } from '../lib/zoom'
 
 function asFileContents(text: string) {
   return text ? `${text}\n` : ''
@@ -19,6 +14,7 @@ function asFileContents(text: string) {
 
 export function SuggestionBlock({ path, original, suggested }: { path: string, original: string, suggested: string }) {
   const [theme] = useTheme()
+  const codeStyle = useCodeStyle()
   const fileDiff = useMemo(
     () => parseDiffFromFile({ name: path, contents: asFileContents(original) }, { name: path, contents: asFileContents(suggested.replace(/\n$/, '')) }),
     [path, original, suggested],
@@ -39,7 +35,7 @@ export function SuggestionBlock({ path, original, suggested }: { path: string, o
         <FileDiffIcon />
         Suggested change
       </div>
-      <FileDiff fileDiff={fileDiff} options={options} style={diffStyle} />
+      <FileDiff fileDiff={fileDiff} options={options} style={codeStyle} />
     </div>
   )
 }

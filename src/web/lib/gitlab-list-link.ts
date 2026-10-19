@@ -9,6 +9,7 @@ export interface ListFilters {
   quick: QuickFilter
   apps: string[]
   search: string
+  queryFilters?: string[]
 }
 
 export interface GitlabListLink {
@@ -51,6 +52,9 @@ export function gitlabListLink(filters: ListFilters, author?: string | null): Gi
 
   if (filters.apps.length)
     missing.push(`app tags (${filters.apps.join(', ')})`)
+
+  if (filters.queryFilters?.length)
+    missing.push(`search filters (${filters.queryFilters.join(' ')})`)
 
   const search = filters.search.trim()
   if (search) {

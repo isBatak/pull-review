@@ -9,6 +9,7 @@ import { useProjectMembers } from '../../hooks/use-project'
 import { api } from '../../lib/api'
 import { teamStyle } from '../../lib/mr-display'
 import { createTeamId, parseProjectInput, TEAM_COLORS } from '../../lib/settings'
+import { formatZoom, useZoom, ZOOM_LEVELS } from '../../lib/zoom'
 import { Avatar } from '../ui/avatar'
 import { Button, IconButton } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
@@ -59,6 +60,22 @@ interface SettingsDialogProps {
   initialTab?: 'general' | 'teams' | 'categories' | 'bundle' | 'ai' | 'backup'
 }
 
+function ZoomSetting() {
+  const [zoom, setZoom] = useZoom()
+  return (
+    <div>
+      <span className={fieldLabel}>Interface size</span>
+      <Segmented
+        label="Interface size"
+        value={String(zoom)}
+        onChange={value => setZoom(Number(value) as typeof zoom)}
+        items={ZOOM_LEVELS.map(level => ({ value: String(level), label: formatZoom(level) }))}
+      />
+      <p className={fieldHint}>Makes text, code and controls bigger or smaller. You can also press ⌘+ and ⌘− to change it, and ⌘0 to reset.</p>
+    </div>
+  )
+}
+
 function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings' | 'onChange'>) {
   const [projectInput, setProjectInput] = useState(settings.project ? `https://${settings.project.host}/${settings.project.project}` : '')
   const [jira, setJira] = useState(settings.jiraBaseUrl)
@@ -99,6 +116,7 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
           {status.message ?? 'The merge request list and team members come from this project.'}
         </p>
       </div>
+      <ZoomSetting />
       <div>
         <span className={fieldLabel}>File groups in a review</span>
         <Segmented

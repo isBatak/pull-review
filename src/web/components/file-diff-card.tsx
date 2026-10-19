@@ -5,7 +5,7 @@ import type { DiffFile, DiffSide, Discussion } from '../../shared/types'
 import type { OpenSuggestion } from '../lib/chat'
 import type { DiffTextSelection } from '../lib/diff-selection'
 import type { ReviewStatus } from '../lib/preferences'
-import { parseDiffFromFile, processFile } from '@pierre/diffs'
+import { DEFAULT_VIRTUAL_FILE_METRICS, parseDiffFromFile, processFile } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
 import { Fruncate } from '@pierre/truncate/react'
 import { ChevronDown, ChevronRight, Code2, Copy, ExternalLink, FileWarning, MessageSquare, Sparkles } from 'lucide-react'
@@ -24,6 +24,7 @@ import { useOpenSymbol } from '../lib/symbols'
 import { directoryName, domIdForFile, fileName } from '../lib/format'
 import { useLocalRepo } from '../lib/local-repos'
 import { useSettings } from '../lib/settings'
+import { codeMetrics, useCodeStyle, useZoom } from '../lib/zoom'
 import { CommentComposer } from './comment-composer'
 import { FindingCard } from './finding-card'
 import { ImageDiff, isImagePath } from './image-diff'
@@ -226,6 +227,9 @@ function FileDiffCardImpl({
   }, [])
 
   const isOneSided = file.additions === 0 || file.deletions === 0
+  const codeStyle = useCodeStyle()
+  const [zoom] = useZoom()
+  const metrics = useMemo(() => ({ ...DEFAULT_VIRTUAL_FILE_METRICS, lineHeight: codeMetrics(zoom, 12, 20).lineHeight }), [zoom])
   const options = useMemo<FileDiffOptions<AnnotationData, undefined>>(() => ({
     diffStyle: isOneSided && !largeDiff ? 'unified' : layout,
     overflow: wrap ? 'wrap' : 'scroll',
@@ -545,11 +549,8 @@ function FileDiffCardImpl({
                 options={options}
                 lineAnnotations={annotations}
                 renderAnnotation={renderAnnotation}
-                style={{
-                  '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
-                  '--diffs-font-size': '12px',
-                  '--diffs-line-height': '20px',
-                } as React.CSSProperties}
+                metrics={metrics}
+                style={codeStyle}
               />
             </div>
           )}

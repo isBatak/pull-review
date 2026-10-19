@@ -233,6 +233,8 @@ export function createApi(options: ApiOptions) {
     }))
   })
 
+  api.get('/project/approvals', async c => c.json(await c.var.projectClient.openApprovals()))
+
   api.get('/project/counts', async c => c.json(await c.var.projectClient.counts(readIds(c.req.query('authorIds')))))
 
   api.get('/mr', async (c) => {

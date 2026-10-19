@@ -7,15 +7,10 @@ import { countChanges } from '../../shared/line-map'
 import { GITHUB_THEMES } from '../lib/code-tokens'
 import { directoryName, fileName } from '../lib/format'
 import { useDiffLayout, useTheme, useWrapLines } from '../lib/preferences'
+import { useCodeStyle } from '../lib/zoom'
 import { parsePatch } from './chat/patch-view'
 import { DiffStat } from './file-diff-card'
 import { FileIcon } from './ui/file-icon'
-
-const diffStyle = {
-  '--diffs-font-family': 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
-  '--diffs-font-size': '12px',
-  '--diffs-line-height': '20px',
-} as React.CSSProperties
 
 const card = css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', overflow: 'hidden' })
 
@@ -32,6 +27,7 @@ export function PatchFileCard({ path, previousPath, diff, isBinary, label, actio
   const [theme] = useTheme()
   const [layout] = useDiffLayout()
   const [wrap] = useWrapLines()
+  const codeStyle = useCodeStyle()
   const fileDiff = useMemo(() => parsePatch(diff)[0] ?? null, [diff])
   const counts = useMemo(() => countChanges(diff), [diff])
   const isOneSided = counts.additions === 0 || counts.deletions === 0
@@ -59,7 +55,7 @@ export function PatchFileCard({ path, previousPath, diff, isBinary, label, actio
         </div>
       </header>
       {isBinary && <div className={css({ p: '4', fontSize: 'sm', color: 'fg.muted' })}>Binary file changed.</div>}
-      {!isBinary && fileDiff && <FileDiff fileDiff={fileDiff} options={options} style={diffStyle} />}
+      {!isBinary && fileDiff && <FileDiff fileDiff={fileDiff} options={options} style={codeStyle} />}
       {!isBinary && !fileDiff && <div className={css({ p: '4', fontSize: 'sm', color: 'fg.muted' })}>No line changes to show.</div>}
     </section>
   )

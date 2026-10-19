@@ -156,6 +156,12 @@ export interface MrSummary {
   labels: string[]
 }
 
+export interface MrApproval {
+  iid: number
+  approved: boolean
+  approvedBy: User[]
+}
+
 export interface MrListResponse {
   items: MrSummary[]
   hasMore: boolean

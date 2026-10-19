@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.12 (2026-10-19)
+
+- Make the whole app bigger or smaller with ⌘+, ⌘− and ⌘0 (Ctrl on Windows and Linux), or pick a size in Settings, General, Interface size.
+- Filter merge requests from the search box, like on GitHub. Type -approved-by:@me to see what you still need to approve. It suggests filters as you type, and the ? lists them all.
+
 ## 0.2.11 (2026-10-16)
 
 - Ask Claude in the chat to comment on the code. It uses a new add_review_comment tool and adds each comment for a file and line, shown as a card under its answer.

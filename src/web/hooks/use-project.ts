@@ -39,3 +39,14 @@ export function useMergeRequestCounts(ref: ProjectRef | null, authorIds: number[
     staleTime: 60_000,
   })
 }
+
+export function useOpenApprovals(ref: ProjectRef | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['mr-approvals', projectKey(ref)],
+    queryFn: () => api.projectApprovals(ref!),
+    enabled: Boolean(ref) && enabled,
+    select: approvals => new Map(approvals.map(approval => [approval.iid, approval])),
+    staleTime: 30_000,
+    refetchInterval: 120_000,
+  })
+}

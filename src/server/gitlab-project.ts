@@ -1,4 +1,4 @@
-import type { MrCounts, MrListResponse, MrListState, MrState, MrSummary, ProjectInfo, ProjectRef, User } from '../shared/types'
+import type { MrApproval, MrCounts, MrListResponse, MrListState, MrState, MrSummary, ProjectInfo, ProjectRef, User } from '../shared/types'
 import type { RawUser } from './gitlab'
 import { createRequester, normalizeUser } from './gitlab'
 
@@ -24,6 +24,50 @@ interface RawMrSummary {
   merge_status?: string
   has_conflicts: boolean
   labels: string[]
+}
+
+interface RawGraphqlUser {
+  id: string
+  username: string
+  name: string
+  avatarUrl: string | null
+  webUrl: string
+}
+
+interface RawApprovalsPage {
+  project: {
+    mergeRequests: {
+      pageInfo: { hasNextPage: boolean, endCursor: string | null }
+      nodes: { iid: string, approved: boolean, approvedBy: { nodes: RawGraphqlUser[] } }[]
+    }
+  } | null
+}
+
+const OPEN_APPROVALS_QUERY = `
+  query OpenApprovals($fullPath: ID!, $after: String) {
+    project(fullPath: $fullPath) {
+      mergeRequests(state: opened, first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          iid
+          approved
+          approvedBy { nodes { id username name avatarUrl webUrl } }
+        }
+      }
+    }
+  }
+`
+
+const MAX_APPROVAL_PAGES = 10
+
+function normalizeGraphqlUser(raw: RawGraphqlUser, host: string): User {
+  return {
+    id: Number(raw.id.split('/').pop()),
+    username: raw.username,
+    name: raw.name,
+    avatarUrl: raw.avatarUrl?.startsWith('/') ? `https://${host}${raw.avatarUrl}` : raw.avatarUrl,
+    webUrl: raw.webUrl,
+  }
 }
 
 export interface MrListQuery {
@@ -70,7 +114,7 @@ async function mapLimited<T, R>(items: T[], run: (item: T) => Promise<R>): Promi
 }
 
 export function createGitlabProjectClient(ref: ProjectRef, token: string) {
-  const { request, json, paginate } = createRequester(ref.host, token)
+  const { request, json, paginate, graphql } = createRequester(ref.host, token)
   const projectPath = `/projects/${encodeURIComponent(ref.project)}`
 
   function mrQuery(state: MrListState, extra: Record<string, string>) {
@@ -154,6 +198,22 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
         items: merged.slice(0, query.limit),
         hasMore: merged.length > query.limit || perAuthor.some(result => result.hasMore),
       }
+    },
+
+    async openApprovals(): Promise<MrApproval[]> {
+      const approvals: MrApproval[] = []
+      let after: string | null = null
+      for (let page = 0; page < MAX_APPROVAL_PAGES; page++) {
+        const data: RawApprovalsPage = await graphql<RawApprovalsPage>(OPEN_APPROVALS_QUERY, { fullPath: ref.project, after })
+        if (!data.project)
+          throw new Error(`GitLab project ${ref.project} was not found`)
+        const { nodes, pageInfo } = data.project.mergeRequests
+        approvals.push(...nodes.map(node => ({ iid: Number(node.iid), approved: node.approved, approvedBy: node.approvedBy.nodes.map(user => normalizeGraphqlUser(user, ref.host)) })))
+        if (!pageInfo.hasNextPage)
+          break
+        after = pageInfo.endCursor
+      }
+      return approvals
     },
 
     async mergeRequestForBranch(branch: string): Promise<MrSummary | null> {

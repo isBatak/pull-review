@@ -10,15 +10,17 @@ import { css } from 'styled-system/css'
 import { parseMrTitle } from '../../shared/mr-title'
 import { analyzeStacks, groupIntoStacks, isWarning } from '../../shared/stacks'
 import { AppHeader } from '../components/app-header'
-import { PeopleFilters, QuickFilters, SearchBox, StateTabs, TagFilters } from '../components/mr-list/filters'
+import { PeopleFilters, QuickFilters, StateTabs, TagFilters } from '../components/mr-list/filters'
 import { MemberFilter } from '../components/mr-list/member-filter'
 import { MrRow } from '../components/mr-list/mr-row'
+import { SearchBox } from '../components/mr-list/search-box'
 import { OpenInGitlab } from '../components/mr-list/open-in-gitlab'
 import { StackGroup } from '../components/mr-list/stack-group'
 import { SettingsDialog } from '../components/settings/settings-dialog'
 import { Button, IconButton } from '../components/ui/button'
-import { useMergeRequestCounts, useMergeRequestList, useProjectInfo, useProjectMembers, useProjectViewer } from '../hooks/use-project'
+import { useMergeRequestCounts, useMergeRequestList, useOpenApprovals, useProjectInfo, useProjectMembers, useProjectViewer } from '../hooks/use-project'
 import { matchesQuickFilter } from '../lib/mr-display'
+import { formatFilter, matchesMrQuery, needsApprovals, parseMrQuery, searchText, withoutApprovalFilters } from '../lib/mr-query'
 import { rememberHomeSearch } from '../lib/last-home'
 import { parseProjectInput, useSettings } from '../lib/settings'
 
@@ -43,13 +45,6 @@ function matchesPeople(mr: MrSummary, people: PeopleFilter, viewer: User | undef
     return mr.reviewers.some(reviewer => reviewer.id === viewer?.id)
   const team = teams.find(item => `team:${item.id}` === people)
   return team ? team.members.includes(mr.author.username) : true
-}
-
-function matchesSearch(mr: MrSummary, needle: string) {
-  if (!needle)
-    return true
-  const text = `${mr.title} !${mr.iid} ${mr.author.name} ${mr.author.username} ${mr.sourceBranch} ${mr.targetBranch}`.toLowerCase()
-  return needle.split(/\s+/).every(part => text.includes(part))
 }
 
 function matchesTags(mr: MrSummary, tags: Set<string>) {
@@ -157,7 +152,7 @@ export function HomePage() {
   const activeTags = useMemo(() => new Set((params.get('apps') ?? '').split(',').filter(Boolean)), [params])
   const selectedMembers = useMemo(() => new Set((params.get('members') ?? '').split(',').filter(Boolean)), [params])
   const [search, setSearch] = useState(params.get('q') ?? '')
-  const deferredSearch = useDeferredValue(search.trim().toLowerCase())
+  const deferredSearch = useDeferredValue(search.trim())
   const [limit, setLimit] = useState(PAGE_STEP)
 
   function setParam(key: string, value: string | null) {
@@ -204,13 +199,18 @@ export function HomePage() {
   }, [people, team, activeMembers, viewer.data, members.data])
 
   const isOpen = state === 'opened'
+  const parsedQuery = useMemo(() => parseMrQuery(deferredSearch), [deferredSearch])
+  const query = useMemo(() => (isOpen ? parsedQuery : withoutApprovalFilters(parsedQuery)), [isOpen, parsedQuery])
+  const skippedApprovalFilters = !isOpen && needsApprovals(parsedQuery)
+  const approvalsNeeded = needsApprovals(query)
+  const approvals = useOpenApprovals(project, approvalsNeeded)
   const openQuery = useMergeRequestList(project, { state: 'opened', limit: OPEN_LIMIT })
   const pagedQuery = useMergeRequestList(project, {
     state,
     limit,
     authorIds,
     reviewerId: people === 'review' ? viewer.data?.id : undefined,
-    search: deferredSearch || undefined,
+    search: searchText(parsedQuery) || undefined,
   }, !isOpen && (people === 'everyone' || Boolean(authorIds?.length) || (people === 'review' && Boolean(viewer.data))))
   const counts = useMergeRequestCounts(project, authorIds, people !== 'review')
 
@@ -220,6 +220,17 @@ export function HomePage() {
       && (!activeMembers.length || activeMembers.includes(mr.author.username))),
     [openQuery.data, people, viewer.data, settings.teams, activeMembers],
   )
+
+  const suggestionSource = useMemo(() => {
+    const items = openQuery.data?.items ?? []
+    return {
+      viewer: viewer.data,
+      members: members.data ?? [],
+      apps: countTags(items).map(tag => tag.name),
+      labels: [...new Set(items.flatMap(mr => mr.labels))].sort(),
+      targets: [...new Set(items.map(mr => mr.targetBranch))].sort(),
+    }
+  }, [openQuery.data, viewer.data, members.data])
 
   const memberCounts = useMemo(() => {
     if (!isOpen || !team || !openQuery.data)
@@ -247,7 +258,10 @@ export function HomePage() {
   }, [isOpen, openQuery.data, viewer.data, settings.teams])
 
   const baseList = isOpen ? openPeopleFiltered : (pagedQuery.data?.items ?? [])
-  const searched = useMemo(() => (isOpen ? baseList.filter(mr => matchesSearch(mr, deferredSearch)) : baseList), [isOpen, baseList, deferredSearch])
+  const searched = useMemo(
+    () => baseList.filter(mr => matchesMrQuery(mr, query, { viewer: viewer.data, approvals: approvals.data })),
+    [baseList, query, viewer.data, approvals.data],
+  )
   const tags = useMemo(() => countTags(searched), [searched])
   const tagged = useMemo(() => searched.filter(mr => matchesTags(mr, activeTags)), [searched, activeTags])
 
@@ -277,7 +291,8 @@ export function HomePage() {
   }
 
   const activeQuery = isOpen ? openQuery : pagedQuery
-  const loading = activeQuery.isPending || (people === 'mine' && !viewer.data) || (Boolean(team) && !members.data && !isOpen)
+  const listError = activeQuery.error ?? (approvalsNeeded ? approvals.error : null)
+  const loading = activeQuery.isPending || (approvalsNeeded && approvals.isPending) || (people === 'mine' && !viewer.data) || (Boolean(team) && !members.data && !isOpen)
 
   function toggleTag(tag: string) {
     const next = new Set(activeTags)
@@ -323,6 +338,8 @@ export function HomePage() {
                   void openQuery.refetch()
                   void pagedQuery.refetch()
                   void counts.refetch()
+                  if (approvalsNeeded)
+                    void approvals.refetch()
                 }}
               >
                 <RefreshCw className={activeQuery.isFetching ? css({ animation: 'spin' }) : undefined} />
@@ -339,7 +356,8 @@ export function HomePage() {
                     reviewer: people === 'review' ? viewer.data?.username : undefined,
                     quick,
                     apps: [...activeTags],
-                    search: search.trim(),
+                    search: searchText(parsedQuery),
+                    queryFilters: parsedQuery.filters.map(formatFilter),
                   }}
                 />
               )}
@@ -366,8 +384,9 @@ export function HomePage() {
               counts={peopleCounts}
               onManageTeams={() => setSettingsOpen('teams')}
             />
-            <SearchBox value={search} onChange={setSearch} placeholder={isOpen ? 'Filter by title, !iid, author or branch' : 'Search titles'} />
           </div>
+
+          <SearchBox value={search} onChange={setSearch} placeholder={isOpen ? 'Search or filter, like -approved-by:@me' : 'Search titles or filter, like author:@me'} source={suggestionSource} />
 
           {team && (
             teamMembers.length > 0
@@ -384,6 +403,10 @@ export function HomePage() {
                 : <p className={css({ fontSize: 'xs', color: 'fg.subtle' })}>This team has no members yet.</p>
           )}
 
+          {skippedApprovalFilters && (
+            <p className={css({ fontSize: 'xs', color: 'fg.subtle' })}>approved-by: and is:approved only work on the Open tab, so they are skipped here.</p>
+          )}
+
           <TagFilters tags={tags} active={activeTags} onToggle={toggleTag} onClear={() => setParam('apps', null)} />
 
           <section className={css({ bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' })}>
@@ -398,15 +421,15 @@ export function HomePage() {
                 )}
               </div>
             )}
-            {activeQuery.error && <div className={css({ p: '6', color: 'danger.fg', fontSize: 'sm', whiteSpace: 'pre-wrap' })}>{activeQuery.error.message}</div>}
-            {!activeQuery.error && loading && <SkeletonRows />}
-            {!activeQuery.error && !loading && entries.length === 0 && (
+            {listError && <div className={css({ p: '6', color: 'danger.fg', fontSize: 'sm', whiteSpace: 'pre-wrap' })}>{listError.message}</div>}
+            {!listError && loading && <SkeletonRows />}
+            {!listError && !loading && entries.length === 0 && (
               <EmptyState
                 title={people === 'review' ? 'Nothing waiting on you' : 'No merge requests match'}
                 body={team && !team.members.length ? 'This team has no members yet. Add people in Settings, Teams.' : 'Try another state, team, app or search.'}
               />
             )}
-            {!activeQuery.error && !loading && entries.length > 0 && projectInfo.data && (
+            {!listError && !loading && entries.length > 0 && projectInfo.data && (
               <ListBody entries={entries} stackInfo={stackInfo} project={projectInfo.data} jiraBaseUrl={settings.jiraBaseUrl} activeTags={activeTags} onToggleTag={toggleTag} />
             )}
             {!isOpen && pagedQuery.data?.hasMore && (

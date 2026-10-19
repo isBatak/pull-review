@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import type { ButtonVariantProps } from 'styled-system/recipes'
+import type { SystemStyleObject } from 'styled-system/types'
 import { Tooltip } from '@ark-ui/react/tooltip'
 import { Portal } from '@ark-ui/react/portal'
 import { css, cx } from 'styled-system/css'
@@ -11,7 +12,7 @@ export function Button({ variant, size, iconOnly, className, type = 'button', ..
   return <button type={type} className={cx(button({ variant, size, iconOnly }), className)} {...props} />
 }
 
-const tooltipContent = css({
+const tooltipContent = css.raw({
   '--arrow-size': '8px',
   '--arrow-background': 'token(colors.tooltip.bg)',
   bg: 'tooltip.bg',
@@ -38,13 +39,13 @@ const tooltipArrowTip = css({
   '[data-placement^=right] &': { borderTopWidth: '0', borderLeftWidth: '1px', borderBottomWidth: '1px' },
 })
 
-export function WithTooltip({ label, children }: { label: ReactNode, children: ReactNode }) {
+export function WithTooltip({ label, children, contentStyle }: { label: ReactNode, children: ReactNode, contentStyle?: SystemStyleObject }) {
   return (
     <Tooltip.Root openDelay={300} closeDelay={0} positioning={{ placement: 'bottom' }}>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Portal>
         <Tooltip.Positioner>
-          <Tooltip.Content className={tooltipContent}>
+          <Tooltip.Content className={css(tooltipContent, contentStyle)}>
             <Tooltip.Arrow>
               <Tooltip.ArrowTip className={tooltipArrowTip} />
             </Tooltip.Arrow>

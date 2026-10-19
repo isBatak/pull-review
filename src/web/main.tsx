@@ -8,6 +8,7 @@ import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { isTinyApp, routeExternalLinks } from './lib/platform'
+import { useZoomController } from './lib/zoom'
 import { ErrorState } from './pages/states'
 import '@pierre/truncate/style.css'
 import './index.css'
@@ -26,6 +27,11 @@ function MrRoute() {
   return <ReviewPage key={location.pathname} mrRef={ref} />
 }
 
+function ZoomController() {
+  useZoomController()
+  return null
+}
+
 const Router = isTinyApp ? HashRouter : BrowserRouter
 
 routeExternalLinks()
@@ -34,6 +40,7 @@ void preloadDiffHighlighter()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <ZoomController />
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />

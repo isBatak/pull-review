@@ -1,7 +1,7 @@
 import type { MrListState } from '../../../shared/types'
 import type { QuickFilter } from '../../lib/mr-display'
 import type { Team } from '../../lib/settings'
-import { Eye, Plus, Search, User as UserIcon, Users, X } from 'lucide-react'
+import { Eye, Plus, User as UserIcon, Users } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { appTagStyle, teamStyle } from '../../lib/mr-display'
 import { UnderlineTabs } from '../ui/underline-tabs'
@@ -84,20 +84,6 @@ export function PeopleFilters({ value, onChange, teams, counts, onManageTeams }:
         {teams.length ? 'Edit teams' : 'Add a team'}
       </button>
     </div>
-  )
-}
-
-export function SearchBox({ value, onChange, placeholder }: { value: string, onChange: (value: string) => void, placeholder: string }) {
-  return (
-    <label className={css({ display: 'flex', alignItems: 'center', gap: '2', h: '8', px: '3', w: { base: 'full', md: '72' }, bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'full', _focusWithin: { borderColor: 'accent.default' }, '& svg': { w: '3.5', h: '3.5', color: 'fg.subtle', flexShrink: 0 } })}>
-      <Search />
-      <input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className={css({ flex: '1', minW: '0', bg: 'transparent', outline: 'none', fontSize: 'xs' })} />
-      {value && (
-        <button type="button" aria-label="Clear search" onClick={() => onChange('')} className={css({ display: 'inline-flex', cursor: 'pointer', color: 'fg.subtle', _hover: { color: 'fg.default' } })}>
-          <X />
-        </button>
-      )}
-    </label>
   )
 }
 
