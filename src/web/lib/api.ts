@@ -14,6 +14,7 @@ import type {
   DiffRefs,
   Discussion,
   FileContentsPair,
+  MergeStatus,
   MrPayload,
   MrRef,
   NewDiffComment,
@@ -141,6 +142,9 @@ export const api = {
   approvals: (ref: MrRef) => call<Approvals>(ref, '/mr/approvals'),
   approve: (ref: MrRef) => call<void>(ref, '/mr/approve', { method: 'POST' }),
   unapprove: (ref: MrRef) => call<void>(ref, '/mr/unapprove', { method: 'POST' }),
+  mergeStatus: (ref: MrRef) => call<MergeStatus>(ref, '/mr/merge-status'),
+  merge: (ref: MrRef, sha: string, autoMerge: boolean) => call<MergeStatus>(ref, '/mr/merge', { method: 'POST', body: { sha, autoMerge } }),
+  cancelAutoMerge: (ref: MrRef) => call<MergeStatus>(ref, '/mr/merge/cancel', { method: 'POST' }),
   createDiscussion: (ref: MrRef, body: string, diffRefs: DiffRefs, comment?: NewDiffComment) =>
     call<Discussion>(ref, '/mr/discussions', { method: 'POST', body: { body, diffRefs, comment } }),
   reply: (ref: MrRef, discussionId: string, body: string) =>

@@ -9,6 +9,7 @@ import type {
   Discussion,
   FileContentsPair,
   MergeRequest,
+  MergeStatus,
   MrRef,
   NewDiffComment,
   Note,
@@ -165,6 +166,9 @@ export interface GitlabClient {
   approvals: () => Promise<Approvals>
   approve: () => Promise<void>
   unapprove: () => Promise<void>
+  mergeStatus: () => Promise<MergeStatus>
+  merge: (sha: string, autoMerge: boolean) => Promise<void>
+  cancelAutoMerge: () => Promise<void>
   createDiscussion: (body: string, diffRefs: DiffRefs, comment?: NewDiffComment) => Promise<Discussion>
   reply: (discussionId: string, body: string) => Promise<Note>
   resolve: (discussionId: string, resolved: boolean) => Promise<Discussion>
@@ -188,6 +192,15 @@ interface RawPipeline {
   id: number
   sha: string
   ref: string
+}
+
+interface RawPipelineJob {
+  id: number
+  name: string
+  stage: string
+  status: string
+  web_url: string
+  allow_failure: boolean
 }
 
 const PIPELINES_TO_SCAN = 20
@@ -382,6 +395,58 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
 
     async unapprove() {
       await request(`${mrPath}/unapprove`, { method: 'POST' })
+    },
+
+    async mergeStatus() {
+      const raw = await json<{
+        state: MergeStatus['state']
+        draft: boolean
+        detailed_merge_status: string
+        has_conflicts: boolean
+        sha: string
+        target_branch: string
+        merge_when_pipeline_succeeds: boolean
+        merge_error: string | null
+        user?: { can_merge: boolean }
+        head_pipeline: { id: number, status: string, web_url: string } | null
+      }>(`${mrPath}?with_merge_status_recheck=true`)
+      const jobs = raw.head_pipeline
+        ? await paginate<RawPipelineJob>(`/projects/${encodeURIComponent(ref.project)}/pipelines/${raw.head_pipeline.id}/jobs`)
+        : []
+      return {
+        state: raw.state,
+        draft: raw.draft,
+        detailedStatus: raw.detailed_merge_status,
+        hasConflicts: raw.has_conflicts,
+        headSha: raw.sha,
+        targetBranch: raw.target_branch,
+        autoMerge: raw.merge_when_pipeline_succeeds,
+        canMerge: raw.user?.can_merge ?? false,
+        mergeError: raw.merge_error,
+        pipeline: raw.head_pipeline && {
+          id: raw.head_pipeline.id,
+          status: raw.head_pipeline.status,
+          webUrl: raw.head_pipeline.web_url,
+          jobs: jobs.map(job => ({
+            id: job.id,
+            name: job.name,
+            stage: job.stage,
+            status: job.status,
+            webUrl: job.web_url,
+            allowFailure: job.allow_failure,
+          })),
+        },
+      }
+    },
+
+    async merge(sha, autoMerge) {
+      // GitLab before 17.11 only knows merge_when_pipeline_succeeds, newer versions prefer auto_merge.
+      const body = autoMerge ? { sha, auto_merge: true, merge_when_pipeline_succeeds: true } : { sha }
+      await request(`${mrPath}/merge`, { method: 'PUT', body: JSON.stringify(body) })
+    },
+
+    async cancelAutoMerge() {
+      await request(`${mrPath}/cancel_merge_when_pipeline_succeeds`, { method: 'POST' })
     },
 
     async createDiscussion(body, diffRefs, comment) {

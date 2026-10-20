@@ -31,19 +31,13 @@ import { Markdown } from '../ui/markdown'
 import { Select } from '../ui/select'
 import { parsePatch, PatchView } from './patch-view'
 import { PromptViewer } from './prompt-viewer'
+import { MergeStatusBar } from './merge-status-bar'
 import { stepsFromTools } from '../../../shared/thinking-steps'
 import { ThinkingTimeline } from '../thinking-timeline'
 import { ClaudeReviewPanel } from '../claude-review-panel'
 import { UnderlineTabs } from '../ui/underline-tabs'
 import { useClaudeReviewControls } from '../../lib/claude-review'
 import { useStoredState } from '../../lib/stored-state'
-
-const SUGGESTIONS = [
-  'Summarize this merge request',
-  'What are the riskiest changes?',
-  'Are any tests missing for these changes?',
-  'Explain how the main change works',
-]
 
 const RESET_COMMANDS = new Set(['/clear', '/new', '/reset'])
 
@@ -591,23 +585,12 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
             className={css({ flex: '1', minH: '0', overflowY: 'auto', display: 'flex', flexDir: 'column', gap: '4', p: '3' })}
           >
             {state.messages.length === 0 && (
-              <div className={css({ display: 'flex', flexDir: 'column', gap: '2', mt: 'auto' })}>
-                <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1' })}>
+              <div className={css({ mt: 'auto' })}>
+                <p className={css({ fontSize: 'xs', color: 'fg.subtle' })}>
                   {controls.autoSelection
                     ? 'Ask about this merge request. Lines and review comments you select in a diff are added to your question.'
                     : 'Ask about this merge request. Select lines or review comments in a diff and click Ask Claude in the file header to add them.'}
                 </p>
-                {SUGGESTIONS.map(suggestion => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    disabled={busy || sending}
-                    onClick={() => void send(suggestion)}
-                    className={css({ textAlign: 'left', px: '3', py: '2', fontSize: 'sm', color: 'fg.default', bg: 'bg.subtle', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', cursor: 'pointer', _hover: { bg: 'bg.muted' }, _disabled: { opacity: 0.5, cursor: 'not-allowed' } })}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
               </div>
             )}
             {state.messages.map((message, index) => (
@@ -624,6 +607,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           </div>
 
           <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
+            <MergeStatusBar mrRef={mrRef} />
             {error && <div className={css({ mb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
             <form
               className={composerBox}

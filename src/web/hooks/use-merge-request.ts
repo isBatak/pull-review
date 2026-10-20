@@ -1,12 +1,14 @@
-import type { BundleSettings, DiffRefs, Discussion, MrRef, NewDiffComment } from '../../shared/types'
+import type { BundleSettings, DiffRefs, Discussion, MergeStatus, MrRef, NewDiffComment } from '../../shared/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mrKey } from '../../shared/mr-ref'
+import { summarizeMergeStatus } from '../../shared/merge-status'
 import { api } from '../lib/api'
 
 const keys = {
   mr: (ref: MrRef) => ['mr', mrKey(ref)] as const,
   discussions: (ref: MrRef) => ['discussions', mrKey(ref)] as const,
   approvals: (ref: MrRef) => ['approvals', mrKey(ref)] as const,
+  mergeStatus: (ref: MrRef) => ['merge-status', mrKey(ref)] as const,
 }
 
 export function useMergeRequest(ref: MrRef) {
@@ -90,4 +92,38 @@ export function useApprovalActions(ref: MrRef) {
   const approve = useMutation({ mutationFn: () => api.approve(ref), onSuccess })
   const unapprove = useMutation({ mutationFn: () => api.unapprove(ref), onSuccess })
   return { approve, unapprove }
+}
+
+const BUSY_POLL_MS = 5_000
+const IDLE_POLL_MS = 30_000
+
+export function useMergeStatus(ref: MrRef) {
+  return useQuery({
+    queryKey: keys.mergeStatus(ref),
+    queryFn: () => api.mergeStatus(ref),
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data)
+        return IDLE_POLL_MS
+      const tone = summarizeMergeStatus(data).tone
+      if (tone === 'done' || tone === 'idle')
+        return false
+      return tone === 'work' ? BUSY_POLL_MS : IDLE_POLL_MS
+    },
+  })
+}
+
+export function useMergeActions(ref: MrRef) {
+  const queryClient = useQueryClient()
+  const onSuccess = (status: MergeStatus) => {
+    queryClient.setQueryData(keys.mergeStatus(ref), status)
+    void queryClient.invalidateQueries({ queryKey: keys.mr(ref) })
+  }
+  const merge = useMutation({
+    mutationFn: ({ sha, autoMerge }: { sha: string, autoMerge: boolean }) => api.merge(ref, sha, autoMerge),
+    onSuccess,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.mergeStatus(ref) }),
+  })
+  const cancelAutoMerge = useMutation({ mutationFn: () => api.cancelAutoMerge(ref), onSuccess })
+  return { merge, cancelAutoMerge }
 }

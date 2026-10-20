@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.14 (2026-10-20)
+
+- The Claude chat shows the merge request's status above the message box, such as Ready to merge or Pipeline running. Click it to see the checks, and merge from there after you confirm.
+
 ## 0.2.13 (2026-10-19)
 
 - Type `/clear` in the chat to start a new conversation, like the New conversation button. `/new` and `/reset` work too. Before, Claude got it as a message.

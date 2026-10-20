@@ -257,6 +257,21 @@ export function createApi(options: ApiOptions) {
     return c.json({ ok: true })
   })
 
+  api.get('/mr/merge-status', async c => c.json(await c.var.client.mergeStatus()))
+
+  api.post('/mr/merge', async (c) => {
+    const body = await c.req.json<{ sha?: unknown, autoMerge?: unknown }>()
+    if (typeof body.sha !== 'string' || !body.sha)
+      return c.json({ error: 'Expected the head commit to merge' }, 400)
+    await c.var.client.merge(body.sha, body.autoMerge === true)
+    return c.json(await c.var.client.mergeStatus())
+  })
+
+  api.post('/mr/merge/cancel', async (c) => {
+    await c.var.client.cancelAutoMerge()
+    return c.json(await c.var.client.mergeStatus())
+  })
+
   api.post('/mr/discussions', async (c) => {
     const input = await c.req.json<{ body: string, diffRefs: DiffRefs, comment?: NewDiffComment }>()
     if (!input.body?.trim())

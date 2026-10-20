@@ -97,6 +97,35 @@ export interface Approvals {
   userCanApprove: boolean
 }
 
+export interface PipelineJob {
+  id: number
+  name: string
+  stage: string
+  status: string
+  webUrl: string
+  allowFailure: boolean
+}
+
+export interface MergePipeline {
+  id: number
+  status: string
+  webUrl: string
+  jobs: PipelineJob[]
+}
+
+export interface MergeStatus {
+  state: MrState
+  draft: boolean
+  detailedStatus: string
+  hasConflicts: boolean
+  headSha: string
+  targetBranch: string
+  autoMerge: boolean
+  canMerge: boolean
+  mergeError: string | null
+  pipeline: MergePipeline | null
+}
+
 export interface MrPayload {
   mergeRequest: MergeRequest
   files: DiffFile[]
