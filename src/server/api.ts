@@ -15,6 +15,10 @@ import type { CommitPlanInput, PlannedCommit } from '../shared/commit-plan'
 import { discardLocalChanges, readLocalChanges } from './local/changes'
 import { commitLocalChanges, pushLocalCommits, readUnpushedCommit } from './local/commits'
 import { applyPatch } from './local/patch'
+import { inspectConflicts, pushSynced, syncWithTarget, undoSync } from './local/conflicts'
+import type { SyncJob } from '../shared/conflicts'
+import { syncStrategy } from '../shared/conflicts'
+import { mrKey } from '../shared/mr-ref'
 import { createLocalFixStore } from './local/fixes'
 import { createWorkspaceOwners, ensureBelongs, readWorkspace } from './local/workspace-guard'
 import { createMrWorkspaces } from './local/mr-workspaces'
@@ -479,6 +483,105 @@ export function createApi(options: ApiOptions) {
     const mr = await mergeRequestBranch(c.var.client)
     await ensureBelongs(gitTools, readRef(c)!, repoPath, mr)
     return c.json(await pushLocalCommits(gitTools, readRef(c)!, repoPath, mr))
+  })
+
+  const syncJobs = new Map<string, SyncJob & { repoPath: string }>()
+  const RUNNING_SYNC = new Set<SyncJob['phase']>(['apply', 'resolve', 'push'])
+
+  function publicJob(job: (SyncJob & { repoPath: string }) | undefined): SyncJob | null {
+    if (!job)
+      return null
+    const { repoPath: _, ...rest } = job
+    return rest
+  }
+
+  api.post('/mr/rebase', async (c) => {
+    await c.var.client.rebase()
+    return c.json(await c.var.client.mergeStatus())
+  })
+
+  api.get('/mr/local/conflicts', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const repoPath = c.req.query('repoPath') ?? ''
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    const mr = await mergeRequestBranch(c.var.client)
+    await ensureBelongs(gitTools, readRef(c)!, repoPath, mr)
+    const status = await c.var.client.mergeStatus()
+    return c.json(await inspectConflicts(gitTools, readRef(c)!, repoPath, mr, status.targetBranch, syncStrategy(status.mergeMethod)))
+  })
+
+  api.get('/mr/local/sync', c => c.json({ job: publicJob(syncJobs.get(mrKey(readRef(c)!))) }))
+
+  api.post('/mr/local/sync', async (c) => {
+    const chat = options.chat
+    if (!host || !gitTools || !chat || !await chat.available())
+      return c.json({ error: 'Fixing conflicts needs a local repository and Claude Code.' }, 404)
+    const { repoPath, model, effort } = await c.req.json<{ repoPath?: string, model?: string, effort?: string }>()
+    if (!repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    const ref = readRef(c)!
+    const existing = syncJobs.get(mrKey(ref))
+    if (existing && (RUNNING_SYNC.has(existing.phase) || existing.phase === 'review'))
+      return c.json({ error: 'A fix for this merge request is already in progress. Push or undo it first.' }, 409)
+    const mr = await mergeRequestBranch(c.var.client)
+    await ensureBelongs(gitTools, ref, repoPath, mr)
+    const status = await c.var.client.mergeStatus()
+    const strategy = syncStrategy(status.mergeMethod)
+    const target = status.targetBranch
+    const job: SyncJob & { repoPath: string } = { strategy, target, phase: 'apply', progress: null, oldHead: mr.headSha, newHead: null, files: [], error: null, repoPath }
+    syncJobs.set(mrKey(ref), job)
+    void syncWithTarget(host, gitTools, ref, repoPath, {
+      mr,
+      target,
+      strategy,
+      onProgress: (progress) => {
+        job.phase = progress.phase
+        job.progress = progress.text
+      },
+      resolve: ({ files, commitSubject }) => chat.resolveConflicts({ title: mr.title, target, strategy, commitSubject, files, model: String(model ?? ''), effort: String(effort ?? '') }),
+    }).then(
+      result => Object.assign(job, { phase: 'review', progress: null, newHead: result.newHead, files: result.files }),
+      error => Object.assign(job, { phase: 'failed', progress: null, error: error instanceof Error ? error.message : String(error) }),
+    )
+    return c.json({ job: publicJob(job) })
+  })
+
+  api.post('/mr/local/sync/push', async (c) => {
+    const job = syncJobs.get(mrKey(readRef(c)!))
+    if (!gitTools || !job || job.phase !== 'review' || !job.newHead)
+      return c.json({ error: 'There is no fix waiting to be pushed.' }, 409)
+    const mr = await mergeRequestBranch(c.var.client)
+    job.phase = 'push'
+    try {
+      await pushSynced(gitTools, readRef(c)!, job.repoPath, mr, { strategy: job.strategy, oldHead: job.oldHead, newHead: job.newHead })
+      job.phase = 'pushed'
+    }
+    catch (error) {
+      job.phase = 'review'
+      throw error
+    }
+    return c.json({ job: publicJob(job) })
+  })
+
+  api.post('/mr/local/sync/undo', async (c) => {
+    const key = mrKey(readRef(c)!)
+    const job = syncJobs.get(key)
+    if (!gitTools || !job || job.phase !== 'review' || !job.newHead)
+      return c.json({ error: 'There is no fix to undo.' }, 409)
+    await undoSync(gitTools, readRef(c)!, job.repoPath, { oldHead: job.oldHead, newHead: job.newHead })
+    syncJobs.delete(key)
+    return c.json({ job: null })
+  })
+
+  api.post('/mr/local/sync/dismiss', async (c) => {
+    const key = mrKey(readRef(c)!)
+    const job = syncJobs.get(key)
+    if (job && (RUNNING_SYNC.has(job.phase) || job.phase === 'review'))
+      return c.json({ error: 'Push or undo the fix first.' }, 409)
+    syncJobs.delete(key)
+    return c.json({ job: null })
   })
 
   api.post('/mr/local/apply-patch', async (c) => {

@@ -16,6 +16,7 @@ import type {
   NotePosition,
   User,
 } from '../shared/types'
+import type { MergeMethod } from '../shared/conflicts'
 import { trimAnalyzerNodes } from '../shared/bundle'
 import { countChanges, sideForPosition } from '../shared/line-map'
 
@@ -169,6 +170,7 @@ export interface GitlabClient {
   mergeStatus: () => Promise<MergeStatus>
   merge: (sha: string, autoMerge: boolean) => Promise<void>
   cancelAutoMerge: () => Promise<void>
+  rebase: () => Promise<void>
   createDiscussion: (body: string, diffRefs: DiffRefs, comment?: NewDiffComment) => Promise<Discussion>
   reply: (discussionId: string, body: string) => Promise<Note>
   resolve: (discussionId: string, resolved: boolean) => Promise<Discussion>
@@ -407,9 +409,11 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
         target_branch: string
         merge_when_pipeline_succeeds: boolean
         merge_error: string | null
+        rebase_in_progress?: boolean
         user?: { can_merge: boolean }
         head_pipeline: { id: number, status: string, web_url: string } | null
-      }>(`${mrPath}?with_merge_status_recheck=true`)
+      }>(`${mrPath}?with_merge_status_recheck=true&include_rebase_in_progress=true`)
+      const project = await json<{ merge_method?: MergeMethod }>(`/projects/${encodeURIComponent(ref.project)}`)
       const jobs = raw.head_pipeline
         ? await paginate<RawPipelineJob>(`/projects/${encodeURIComponent(ref.project)}/pipelines/${raw.head_pipeline.id}/jobs`)
         : []
@@ -423,6 +427,8 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
         autoMerge: raw.merge_when_pipeline_succeeds,
         canMerge: raw.user?.can_merge ?? false,
         mergeError: raw.merge_error,
+        mergeMethod: project.merge_method ?? 'merge',
+        rebaseInProgress: raw.rebase_in_progress ?? false,
         pipeline: raw.head_pipeline && {
           id: raw.head_pipeline.id,
           status: raw.head_pipeline.status,
@@ -447,6 +453,10 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
 
     async cancelAutoMerge() {
       await request(`${mrPath}/cancel_merge_when_pipeline_succeeds`, { method: 'POST' })
+    },
+
+    async rebase() {
+      await request(`${mrPath}/rebase`, { method: 'PUT' })
     },
 
     async createDiscussion(body, diffRefs, comment) {

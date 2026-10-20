@@ -13,6 +13,8 @@ function status(overrides: Partial<MergeStatus> = {}): MergeStatus {
     autoMerge: false,
     canMerge: true,
     mergeError: null,
+    mergeMethod: 'merge',
+    rebaseInProgress: false,
     pipeline: null,
     ...overrides,
   }
@@ -49,10 +51,20 @@ describe('summarizeMergeStatus', () => {
   })
 
   it('names known blockers and falls back for the rest', () => {
-    expect(summarizeMergeStatus(status({ detailedStatus: 'conflict', hasConflicts: true })).label).toBe('Conflicts')
     expect(summarizeMergeStatus(status({ detailedStatus: 'checking' })).tone).toBe('work')
+    expect(summarizeMergeStatus(status({ detailedStatus: 'not_approved' }))).toEqual({ tone: 'warn', label: 'Needs approval', action: null })
     expect(summarizeMergeStatus(status({ detailedStatus: 'locked_paths' }))).toEqual({ tone: 'warn', label: 'Blocked', action: null })
+  })
+
+  it('offers to fix conflicts, even to people who cannot merge', () => {
+    expect(summarizeMergeStatus(status({ detailedStatus: 'conflict', hasConflicts: true, canMerge: false }))).toEqual({ tone: 'warn', label: 'Conflicts', action: 'resolve' })
+    expect(summarizeMergeStatus(status({ detailedStatus: 'need_rebase', hasConflicts: true })).action).toBe('resolve')
     expect(summarizeMergeStatus(status({ detailedStatus: 'locked_paths', hasConflicts: true })).label).toBe('Conflicts')
+  })
+
+  it('offers a GitLab rebase when the branch is only behind', () => {
+    expect(summarizeMergeStatus(status({ detailedStatus: 'need_rebase' }))).toEqual({ tone: 'warn', label: 'Needs rebase', action: 'rebase' })
+    expect(summarizeMergeStatus(status({ detailedStatus: 'need_rebase', rebaseInProgress: true }))).toEqual({ tone: 'work', label: 'Rebasing', action: null })
   })
 })
 

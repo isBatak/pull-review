@@ -6,17 +6,13 @@ import { Check, GitCommitHorizontal, Loader2, Upload, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { css, cx } from 'styled-system/css'
-import { mrKey } from '../../../shared/mr-ref'
 import { mrReference } from '../../../shared/merge-status'
 import { shipSteps } from '../../../shared/ship-flow'
-import { mergeStatusKey } from '../../hooks/use-merge-request'
 import { api } from '../../lib/api'
 import { localChangesKey } from '../../lib/local-repos'
+import { waitForHead } from '../../lib/wait-for-head'
 import { useSettings } from '../../lib/settings'
 import { Button } from '../ui/button'
-
-const UPDATE_POLL_MS = 2_000
-const UPDATE_POLL_TRIES = 30
 
 interface ShipCommit {
   subject: string
@@ -36,8 +32,6 @@ function subjectOf(message: string) {
   return message.trim().split('\n')[0] ?? ''
 }
 
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
 export function useShipFlow(mrRef: MrRef, repoPath: string | null) {
   const queryClient = useQueryClient()
   const [settings] = useSettings()
@@ -48,17 +42,7 @@ export function useShipFlow(mrRef: MrRef, repoPath: string | null) {
 
   async function waitForMergeRequest(sha: string) {
     update({ stage: 'update' })
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: localChangesKey(mrRef, repoPath) }),
-      queryClient.invalidateQueries({ queryKey: ['mr', mrKey(mrRef)] }),
-    ])
-    for (let attempt = 0; attempt < UPDATE_POLL_TRIES; attempt++) {
-      const status = await api.mergeStatus(mrRef)
-      queryClient.setQueryData(mergeStatusKey(mrRef), status)
-      if (status.headSha === sha)
-        break
-      await wait(UPDATE_POLL_MS)
-    }
+    await waitForHead(queryClient, mrRef, repoPath, sha)
     update({ stage: 'done' })
   }
 
@@ -130,7 +114,7 @@ const STEP_COLOR: Record<ShipStepState, string> = {
 
 const markerSize = css({ w: '3.5', h: '3.5', flexShrink: 0 })
 
-function StepMarker({ state }: { state: ShipStepState }) {
+export function StepMarker({ state }: { state: ShipStepState }) {
   if (state === 'active')
     return <Loader2 aria-hidden className={cx(markerSize, css({ color: 'blue.500', animation: 'spin' }))} />
   if (state === 'done')

@@ -127,5 +127,6 @@ export function useMergeActions(ref: MrRef) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.mergeStatus(ref) }),
   })
   const cancelAutoMerge = useMutation({ mutationFn: () => api.cancelAutoMerge(ref), onSuccess })
-  return { merge, cancelAutoMerge }
+  const rebase = useMutation({ mutationFn: () => api.rebase(ref), onSuccess })
+  return { merge, cancelAutoMerge, rebase }
 }

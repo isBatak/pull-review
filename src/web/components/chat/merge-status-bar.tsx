@@ -1,6 +1,6 @@
 import type { MergeStatus, MrRef } from '../../../shared/types'
 import type { MergeSummary, MergeTone } from '../../../shared/merge-status'
-import { ChevronDown, ExternalLink, GitMerge, Loader2, Upload } from 'lucide-react'
+import { ChevronDown, ExternalLink, GitMerge, GitPullRequestArrow, Loader2, Sparkles, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { mrReference, summarizeJobs, summarizeMergeStatus } from '../../../shared/merge-status'
@@ -13,6 +13,8 @@ import { useReview } from '../review-context'
 import { Button } from '../ui/button'
 import type { ShipFlow } from './ship-flow'
 import { ShipCard, shipChipLabel, useShipFlow } from './ship-flow'
+import type { ConflictFlow } from './conflict-flow'
+import { ConflictCard, conflictChipLabel, useConflictFlow } from './conflict-flow'
 
 const TONE_COLOR: Record<MergeTone, string> = {
   idle: css({ color: 'fg.subtle' }),
@@ -133,12 +135,30 @@ interface MergeButtonsProps {
   status: MergeStatus
   summary: MergeSummary
   actions: ReturnType<typeof useMergeActions>
+  onResolve: () => void
 }
 
-function MergeButtons({ status, summary, actions }: MergeButtonsProps) {
-  const { merge, cancelAutoMerge } = actions
+function MergeButtons({ status, summary, actions, onResolve }: MergeButtonsProps) {
+  const { merge, cancelAutoMerge, rebase } = actions
   const [confirming, setConfirming] = useState(false)
-  const busy = merge.isPending || cancelAutoMerge.isPending
+  const busy = merge.isPending || cancelAutoMerge.isPending || rebase.isPending
+
+  if (summary.action === 'resolve') {
+    return (
+      <Button size="xs" variant="solid" onClick={onResolve}>
+        <Sparkles />
+        Fix conflicts
+      </Button>
+    )
+  }
+  if (summary.action === 'rebase') {
+    return (
+      <Button size="xs" disabled={busy} onClick={() => rebase.mutate()} title={`GitLab rebases this branch onto ${status.targetBranch} on its own server.`}>
+        {busy ? <Loader2 className={css({ animation: 'spin' })} /> : <GitPullRequestArrow />}
+        Rebase
+      </Button>
+    )
+  }
 
   if (summary.action === 'cancel-auto-merge') {
     return (
@@ -175,9 +195,14 @@ function MergeButtons({ status, summary, actions }: MergeButtonsProps) {
   )
 }
 
-function shownSummary(summary: MergeSummary, flow: ShipFlow, merging: boolean): MergeSummary {
-  if (merging)
-    return { tone: 'work', label: 'Merging', action: null }
+function shownSummary(summary: MergeSummary, flow: ShipFlow, conflicts: ConflictFlow, pending: string | null): MergeSummary {
+  if (pending)
+    return { tone: 'work', label: pending, action: null }
+  const conflictLabel = conflictChipLabel(conflicts)
+  if (conflictLabel) {
+    const phase = conflicts.job?.phase
+    return { tone: phase === 'failed' ? 'fail' : phase === 'review' ? 'idle' : 'work', label: conflictLabel, action: null }
+  }
   const run = flow.run
   if (!run || run.stage === 'done')
     return summary
@@ -212,13 +237,14 @@ export function MergeStatusBar({ mrRef, repoPath }: { mrRef: MrRef, repoPath: st
   const files = belongs ? local?.files ?? [] : []
   const unpushed = belongs ? local?.unpushed ?? [] : []
   const flow = useShipFlow(mrRef, repoPath)
+  const conflicts = useConflictFlow(mrRef, repoPath, mergeRequest.diffRefs.headSha, query.data?.headSha ?? null)
   const status = query.data
   if (!status)
     return null
   const summary = summarizeMergeStatus(status)
-  const shown = shownSummary(summary, flow, merge.isPending)
-  const error = merge.error ?? cancelAutoMerge.error ?? query.error
-  const shipping = flow.run !== null && flow.run.stage !== 'done' && !flow.run.error
+  const shown = shownSummary(summary, flow, conflicts, merge.isPending ? 'Merging' : actions.rebase.isPending ? 'Rebasing' : null)
+  const error = merge.error ?? cancelAutoMerge.error ?? actions.rebase.error ?? query.error
+  const shipping = (flow.run !== null && flow.run.stage !== 'done' && !flow.run.error) || conflicts.open
 
   return (
     <div className={css({ mb: '2', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg' })}>
@@ -237,10 +263,11 @@ export function MergeStatusBar({ mrRef, repoPath }: { mrRef: MrRef, repoPath: st
         <span className={css({ flex: '1' })} />
         {!shipping && (files.length > 0 || unpushed.length > 0)
           ? <ShipButton files={files} unpushed={unpushed} onClick={() => void flow.start(files, unpushed)} />
-          : !shipping && <MergeButtons status={status} summary={summary} actions={actions} />}
+          : !shipping && <MergeButtons status={status} summary={summary} actions={actions} onResolve={conflicts.show} />}
       </div>
       {error && <p className={css({ px: '2.5', pb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error.message}</p>}
       <ShipCard mrRef={mrRef} branch={mergeRequest.sourceBranch} flow={flow} />
+      <ConflictCard mrRef={mrRef} branch={mergeRequest.sourceBranch} flow={conflicts} repoPath={repoPath} />
       {open && <Checks mrRef={mrRef} status={status} />}
     </div>
   )

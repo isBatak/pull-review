@@ -9,6 +9,8 @@ import { mrKey } from '../../shared/mr-ref'
 import { applyStreamLine, explainExit } from './claude-events'
 import { findExecutable } from '../local/host'
 import { expandHome } from '../local/git'
+import type { ResolvedFile, ResolvePromptInput } from '../../shared/conflicts'
+import { buildResolvePrompt, readResolution, RESOLVE_SCHEMA, RESOLVE_SYSTEM_PROMPT } from '../../shared/conflicts'
 import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan, splitInfo } from '../../shared/commit-plan'
 import { readLocalChanges } from '../local/changes'
 import { createGitTools } from '../local/git'
@@ -85,6 +87,7 @@ export interface ChatService {
   sentPrompt: (ref: MrRef, messageId: string) => Promise<ChatPromptView>
   stop: (ref: MrRef) => Promise<ChatState>
   planCommits: (ref: MrRef, input: CommitPlanInput & { title: string, branch: string }) => Promise<CommitPlan>
+  resolveConflicts: (input: ResolvePromptInput & { model: string, effort: string }) => Promise<ResolvedFile[]>
   reset: (ref: MrRef) => Promise<ChatState>
   reviewState: (ref: MrRef, since: number, waitMs: number) => Promise<ReviewRunState>
   runReview: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ReviewRunInput, postComment: PostComment) => Promise<ReviewRunState>
@@ -339,6 +342,49 @@ export function createChatService(host: LocalHost): ChatService {
     return task
   }
 
+  async function runStructured(input: { folder: string, prompt: string, systemPrompt: string, schema: unknown, model: string, effort: string }) {
+    const binary = await claudePath
+    if (!binary)
+      throw new ChatError(404, 'Claude Code is not installed.')
+    const dir = `${host.cacheDir}/${input.folder}`
+    await host.makeDir(dir)
+    const promptFile = `${dir}/${createId()}.txt`
+    await host.writeFile(promptFile, input.prompt)
+    const lines: string[] = []
+    try {
+      const process = host.stream([
+        binary,
+        '-p',
+        '--output-format',
+        'json',
+        '--tools',
+        '',
+        '--setting-sources',
+        '',
+        '--strict-mcp-config',
+        '--no-session-persistence',
+        '--append-system-prompt',
+        input.systemPrompt,
+        '--json-schema',
+        JSON.stringify(input.schema),
+        ...chatModelArgs(input.model, input.effort),
+      ], { cwd: dir, stdinFile: promptFile, env: await claudeEnv(), onLine: line => lines.push(line) })
+      const { code, stderr } = await process.exited
+      const value = lines.map((line) => {
+        try {
+          return JSON.parse(line) as unknown
+        }
+        catch {
+          return null
+        }
+      }).findLast(item => item !== null)
+      return { value, code, stderr }
+    }
+    finally {
+      await host.remove(promptFile).catch(() => null)
+    }
+  }
+
   async function claudeEnv() {
     const env = { ...await host.env() }
     for (const key of REMOVED_ENV)
@@ -543,46 +589,33 @@ export function createChatService(host: LocalHost): ChatService {
         budget -= diff.length
         return { path: file.path, status: file.status, diff, untracked: file.untracked, isBinary: file.isBinary }
       })
-      const dir = `${host.cacheDir}/commit-plans`
-      await host.makeDir(dir)
-      const promptFile = `${dir}/${createId()}.txt`
-      await host.writeFile(promptFile, buildCommitPlanPrompt({ title: input.title, branch: input.branch, recentSubjects: recent.stdout.split('\n').filter(Boolean), files }))
-      const lines: string[] = []
-      try {
-        const process = host.stream([
-          binary,
-          '-p',
-          '--output-format',
-          'json',
-          '--tools',
-          '',
-          '--setting-sources',
-          '',
-          '--strict-mcp-config',
-          '--no-session-persistence',
-          '--append-system-prompt',
-          COMMIT_PLAN_SYSTEM_PROMPT,
-          '--json-schema',
-          JSON.stringify(COMMIT_PLAN_SCHEMA),
-          ...chatModelArgs(input.model, input.effort),
-        ], { cwd: dir, stdinFile: promptFile, env: await claudeEnv(), onLine: line => lines.push(line) })
-        const { code, stderr } = await process.exited
-        const output = lines.map((line) => {
-          try {
-            return JSON.parse(line) as unknown
-          }
-          catch {
-            return null
-          }
-        }).findLast(value => value !== null)
-        const plan = readCommitPlan(output)
-        if (!plan)
-          throw new ChatError(502, code === 0 ? 'Claude did not return a commit plan. Try again, or write the commits yourself.' : explainExit(code, stderr))
-        return normalizeCommitPlan(plan, changes.files.map(splitInfo))
-      }
-      finally {
-        await host.remove(promptFile).catch(() => null)
-      }
+      const output = await runStructured({
+        folder: 'commit-plans',
+        prompt: buildCommitPlanPrompt({ title: input.title, branch: input.branch, recentSubjects: recent.stdout.split('\n').filter(Boolean), files }),
+        systemPrompt: COMMIT_PLAN_SYSTEM_PROMPT,
+        schema: COMMIT_PLAN_SCHEMA,
+        model: input.model,
+        effort: input.effort,
+      })
+      const plan = readCommitPlan(output.value)
+      if (!plan)
+        throw new ChatError(502, output.code === 0 ? 'Claude did not return a commit plan. Try again, or write the commits yourself.' : explainExit(output.code, output.stderr))
+      return normalizeCommitPlan(plan, changes.files.map(splitInfo))
+    },
+
+    async resolveConflicts(input) {
+      const output = await runStructured({
+        folder: 'conflicts',
+        prompt: buildResolvePrompt(input),
+        systemPrompt: RESOLVE_SYSTEM_PROMPT,
+        schema: RESOLVE_SCHEMA,
+        model: input.model,
+        effort: input.effort,
+      })
+      const result = readResolution(output.value, input.files.map(file => file.path))
+      if ('error' in result)
+        throw new ChatError(502, output.code === 0 ? result.error : explainExit(output.code, output.stderr))
+      return result.files
     },
 
     async stop(ref) {

@@ -1,3 +1,4 @@
+import type { MergeMethod } from './conflicts'
 export interface MrRef {
   host: string
   project: string
@@ -123,6 +124,8 @@ export interface MergeStatus {
   autoMerge: boolean
   canMerge: boolean
   mergeError: string | null
+  mergeMethod: MergeMethod
+  rebaseInProgress: boolean
   pipeline: MergePipeline | null
 }
 

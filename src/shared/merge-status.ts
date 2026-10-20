@@ -2,7 +2,7 @@ import type { MergeStatus, PipelineJob } from './types'
 
 export type MergeTone = 'idle' | 'work' | 'warn' | 'fail' | 'ok' | 'done'
 
-export type MergeAction = 'merge' | 'auto-merge' | 'cancel-auto-merge'
+export type MergeAction = 'merge' | 'auto-merge' | 'cancel-auto-merge' | 'rebase' | 'resolve'
 
 export interface MergeSummary {
   tone: MergeTone
@@ -13,8 +13,6 @@ export interface MergeSummary {
 const CHECKING = new Set(['unchecked', 'checking', 'preparing', 'approvals_syncing'])
 
 const BLOCKERS: Record<string, { tone: MergeTone, label: string }> = {
-  conflict: { tone: 'warn', label: 'Conflicts' },
-  need_rebase: { tone: 'warn', label: 'Needs rebase' },
   not_approved: { tone: 'warn', label: 'Needs approval' },
   requested_changes: { tone: 'warn', label: 'Changes requested' },
   discussions_not_resolved: { tone: 'warn', label: 'Open threads' },
@@ -34,6 +32,12 @@ export function summarizeMergeStatus(status: MergeStatus): MergeSummary {
     return { tone: 'idle', label: 'Locked', action: null }
   if (status.autoMerge)
     return { tone: 'work', label: 'Merges when pipeline passes', action: allowed('cancel-auto-merge') }
+  if (status.rebaseInProgress)
+    return { tone: 'work', label: 'Rebasing', action: null }
+  if (status.hasConflicts || status.detailedStatus === 'conflict')
+    return { tone: 'warn', label: 'Conflicts', action: 'resolve' }
+  if (status.detailedStatus === 'need_rebase')
+    return { tone: 'warn', label: 'Needs rebase', action: 'rebase' }
   if (status.detailedStatus === 'mergeable')
     return { tone: 'ok', label: 'Ready to merge', action: allowed('merge') }
   if (CHECKING.has(status.detailedStatus))
@@ -48,8 +52,6 @@ export function summarizeMergeStatus(status: MergeStatus): MergeSummary {
   const blocker = BLOCKERS[status.detailedStatus]
   if (blocker)
     return { ...blocker, action: null }
-  if (status.hasConflicts)
-    return { tone: 'warn', label: 'Conflicts', action: null }
   return { tone: 'warn', label: 'Blocked', action: null }
 }
 

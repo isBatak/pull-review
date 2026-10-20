@@ -27,6 +27,7 @@ import type { CommitPlan, CommitPlanInput, CommitResult, PlannedCommit } from '.
 import type { LocalChanges } from '../../shared/local-changes'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
 import type { SymbolHit } from '../../shared/symbols'
+import type { ConflictReport, SyncJob } from '../../shared/conflicts'
 import { transport } from './platform'
 
 export class ApiError extends Error {
@@ -145,6 +146,13 @@ export const api = {
   mergeStatus: (ref: MrRef) => call<MergeStatus>(ref, '/mr/merge-status'),
   merge: (ref: MrRef, sha: string, autoMerge: boolean) => call<MergeStatus>(ref, '/mr/merge', { method: 'POST', body: { sha, autoMerge } }),
   cancelAutoMerge: (ref: MrRef) => call<MergeStatus>(ref, '/mr/merge/cancel', { method: 'POST' }),
+  rebase: (ref: MrRef) => call<MergeStatus>(ref, '/mr/rebase', { method: 'POST' }),
+  conflicts: (ref: MrRef, repoPath: string) => call<ConflictReport>(ref, '/mr/local/conflicts', { query: { repoPath } }),
+  syncJob: (ref: MrRef) => call<{ job: SyncJob | null }>(ref, '/mr/local/sync'),
+  startSync: (ref: MrRef, input: { repoPath: string, model: string, effort: string }) => call<{ job: SyncJob | null }>(ref, '/mr/local/sync', { method: 'POST', body: input }),
+  pushSync: (ref: MrRef) => call<{ job: SyncJob | null }>(ref, '/mr/local/sync/push', { method: 'POST' }),
+  undoSync: (ref: MrRef) => call<{ job: SyncJob | null }>(ref, '/mr/local/sync/undo', { method: 'POST' }),
+  dismissSync: (ref: MrRef) => call<{ job: SyncJob | null }>(ref, '/mr/local/sync/dismiss', { method: 'POST' }),
   createDiscussion: (ref: MrRef, body: string, diffRefs: DiffRefs, comment?: NewDiffComment) =>
     call<Discussion>(ref, '/mr/discussions', { method: 'POST', body: { body, diffRefs, comment } }),
   reply: (ref: MrRef, discussionId: string, body: string) =>
