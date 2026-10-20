@@ -7,6 +7,7 @@
 - When a merge request has conflicts, the chat shows which lines clash. Claude rebases or merges, following the project's merge method, and fixes them. You review each fix and then push, or undo it. A branch that is only behind gets a Rebase button that uses GitLab's own rebase.
 - When your local folder is on a branch with commits and no merge request, the start page offers Create MR. Claude writes the title and description in your team's style, and the app pushes the branch, creates the merge request and opens it.
 - Experiment: Claude can answer in the chat with small cards built with OpenUI: a risk table, files to review, a checklist, the live merge status and follow-up questions you can click.
+- Fixed: text in the Claude chat can be selected again. Links and code blocks were rebuilt on every update, which dropped the selection while you dragged.
 
 ## 0.2.13 (2026-10-19)
 

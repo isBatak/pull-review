@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ComponentProps, ReactElement, ReactNode } from 'react'
 import { createContext, use } from 'react'
 import type { Components } from 'react-markdown'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
@@ -78,25 +78,36 @@ function codeBlockOf(children: ReactNode) {
   return { language, code: String(element?.props?.children ?? '') }
 }
 
+// Module-level components keep their identity across renders; inline ones would remount every link and code block, which drops text selections.
+const ActiveCodeBlockRenderer = createContext<CodeBlockRenderer | null>(null)
+
+function CodeBlock({ node: _node, children, ...props }: ComponentProps<'pre'> & { node?: unknown }) {
+  const renderer = use(ActiveCodeBlockRenderer)
+  if (!renderer)
+    return <pre {...props}>{children}</pre>
+  const { language, code } = codeBlockOf(children)
+  return renderer(language, code) ?? <pre {...props}>{children}</pre>
+}
+
+function Link({ node: _node, ...props }: ComponentProps<'a'> & { node?: unknown }) {
+  return <a {...props} target="_blank" rel="noreferrer" />
+}
+
+const COMPONENTS: Components = { a: Link, pre: CodeBlock }
+
 export function Markdown({ children, className, baseUrl, renderCodeBlock }: { children: string, className?: string, baseUrl?: string, renderCodeBlock?: CodeBlockRenderer }) {
   const contextRenderer = use(CodeBlockRendererContext)
-  const codeBlockRenderer = renderCodeBlock ?? contextRenderer
-  const components: Components = { a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }
-  if (codeBlockRenderer) {
-    components.pre = ({ node: _node, children: preChildren, ...props }) => {
-      const { language, code } = codeBlockOf(preChildren)
-      return codeBlockRenderer(language, code) ?? <pre {...props}>{preChildren}</pre>
-    }
-  }
   return (
     <div className={cx(prose, className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkInlineTags]}
-        urlTransform={url => defaultUrlTransform(baseUrl && url.startsWith('/') ? `${baseUrl}${url}` : url)}
-        components={components}
-      >
-        {children.replace(HTML_COMMENT, '')}
-      </ReactMarkdown>
+      <ActiveCodeBlockRenderer value={renderCodeBlock ?? contextRenderer}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkInlineTags]}
+          urlTransform={url => defaultUrlTransform(baseUrl && url.startsWith('/') ? `${baseUrl}${url}` : url)}
+          components={COMPONENTS}
+        >
+          {children.replace(HTML_COMMENT, '')}
+        </ReactMarkdown>
+      </ActiveCodeBlockRenderer>
     </div>
   )
 }

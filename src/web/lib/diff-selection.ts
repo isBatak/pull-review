@@ -80,6 +80,12 @@ export function readDiffTextSelection(container: HTMLElement): DiffTextSelection
   const active = document.activeElement
   if (isTextField(active))
     return 'outside'
+  if (!selection || selection.rangeCount === 0)
+    return 'cleared'
+  // Shadow DOM selections are retargeted to their host here, which is inside the container, so this stays cheap for selections elsewhere.
+  const touches = [selection.anchorNode, selection.focusNode].some(node => node && composedContains(container, node))
+  if (!touches)
+    return selection.isCollapsed ? 'cleared' : 'outside'
   const shadowRoots = shadowRootsIn(container)
   const range = selection && readRange(selection, shadowRoots)
   if (!range || range.collapsed)
