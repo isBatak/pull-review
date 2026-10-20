@@ -226,6 +226,29 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
       return null
     },
 
+    async openMergeRequestForBranch(branch: string): Promise<number | null> {
+      const found = await json<{ iid: number }[]>(`${projectPath}/merge_requests?${mrQuery('opened', { source_branch: branch, per_page: '1' })}`)
+      return found[0]?.iid ?? null
+    },
+
+    async mergeRequestHeadsForBranch(branch: string): Promise<string[]> {
+      const found = await json<{ sha: string }[]>(`${projectPath}/merge_requests?${mrQuery('all', { source_branch: branch, per_page: '20' })}`)
+      return found.map(item => item.sha)
+    },
+
+    async recentTitles(): Promise<string[]> {
+      const found = await json<{ title: string }[]>(`${projectPath}/merge_requests?${mrQuery('merged', { per_page: '20' })}`)
+      return found.map(item => item.title)
+    },
+
+    async createMergeRequest(input: { source: string, target: string, title: string, description: string }): Promise<number> {
+      const created = await json<{ iid: number }>(`${projectPath}/merge_requests`, {
+        method: 'POST',
+        body: JSON.stringify({ source_branch: input.source, target_branch: input.target, title: input.title, description: input.description }),
+      })
+      return created.iid
+    },
+
     async counts(authorIds?: number[]): Promise<MrCounts> {
       const states: MrListState[] = ['opened', 'merged', 'closed', 'all']
       const authors = authorIds?.length ? authorIds : [null]

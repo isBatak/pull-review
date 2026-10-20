@@ -10,6 +10,8 @@ import { applyStreamLine, explainExit } from './claude-events'
 import { findExecutable } from '../local/host'
 import { expandHome } from '../local/git'
 import type { ResolvedFile, ResolvePromptInput } from '../../shared/conflicts'
+import type { MrDraft, MrDraftPromptInput } from '../../shared/new-mr'
+import { buildMrDraftPrompt, MR_DRAFT_SCHEMA, MR_DRAFT_SYSTEM_PROMPT, readMrDraft } from '../../shared/new-mr'
 import { buildResolvePrompt, readResolution, RESOLVE_SCHEMA, RESOLVE_SYSTEM_PROMPT } from '../../shared/conflicts'
 import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan, splitInfo } from '../../shared/commit-plan'
 import { readLocalChanges } from '../local/changes'
@@ -88,6 +90,7 @@ export interface ChatService {
   stop: (ref: MrRef) => Promise<ChatState>
   planCommits: (ref: MrRef, input: CommitPlanInput & { title: string, branch: string }) => Promise<CommitPlan>
   resolveConflicts: (input: ResolvePromptInput & { model: string, effort: string }) => Promise<ResolvedFile[]>
+  draftMergeRequest: (input: MrDraftPromptInput & { model: string, effort: string }) => Promise<MrDraft>
   reset: (ref: MrRef) => Promise<ChatState>
   reviewState: (ref: MrRef, since: number, waitMs: number) => Promise<ReviewRunState>
   runReview: (ref: MrRef, load: () => Promise<MrSnapshot>, input: ReviewRunInput, postComment: PostComment) => Promise<ReviewRunState>
@@ -616,6 +619,21 @@ export function createChatService(host: LocalHost): ChatService {
       if ('error' in result)
         throw new ChatError(502, output.code === 0 ? result.error : explainExit(output.code, output.stderr))
       return result.files
+    },
+
+    async draftMergeRequest(input) {
+      const output = await runStructured({
+        folder: 'mr-drafts',
+        prompt: buildMrDraftPrompt(input),
+        systemPrompt: MR_DRAFT_SYSTEM_PROMPT,
+        schema: MR_DRAFT_SCHEMA,
+        model: input.model,
+        effort: input.effort,
+      })
+      const draft = readMrDraft(output.value)
+      if (!draft)
+        throw new ChatError(502, output.code === 0 ? 'Claude did not return a title. Write it yourself.' : explainExit(output.code, output.stderr))
+      return draft
     },
 
     async stop(ref) {

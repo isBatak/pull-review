@@ -28,6 +28,7 @@ import type { LocalChanges } from '../../shared/local-changes'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
 import type { SymbolHit } from '../../shared/symbols'
 import type { ConflictReport, SyncJob } from '../../shared/conflicts'
+import type { BranchStatus, MrDraft } from '../../shared/new-mr'
 import { transport } from './platform'
 
 export class ApiError extends Error {
@@ -81,6 +82,9 @@ export interface MrListParams {
 
 export const api = {
   projectInfo: (ref: ProjectRef) => call<ProjectInfo>(ref, '/project/info'),
+  newMrStatus: (ref: ProjectRef, repoPath: string) => call<{ status: BranchStatus | null }>(ref, '/project/new-mr', { query: { repoPath } }),
+  draftMr: (ref: ProjectRef, input: { repoPath: string, target: string, model: string, effort: string }) => call<MrDraft>(ref, '/project/new-mr/draft', { method: 'POST', body: input }),
+  createMr: (ref: ProjectRef, input: { repoPath: string, branch: string, target: string, title: string, description: string }) => call<MrRef>(ref, '/project/new-mr', { method: 'POST', body: input }),
   projectAvatar: async (ref: ProjectRef) => {
     const response = await transport('GET', `/api/project/avatar${queryFor(ref)}`)
     if (!response.ok)

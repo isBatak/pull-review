@@ -16,6 +16,7 @@ import { discardLocalChanges, readLocalChanges } from './local/changes'
 import { commitLocalChanges, pushLocalCommits, readUnpushedCommit } from './local/commits'
 import { applyPatch } from './local/patch'
 import { inspectConflicts, pushSynced, syncWithTarget, undoSync } from './local/conflicts'
+import { pushBranch, readBranchStatus, readDraftInput } from './local/new-mr'
 import type { SyncJob } from '../shared/conflicts'
 import { syncStrategy } from '../shared/conflicts'
 import { mrKey } from '../shared/mr-ref'
@@ -238,6 +239,51 @@ export function createApi(options: ApiOptions) {
   })
 
   api.get('/project/approvals', async c => c.json(await c.var.projectClient.openApprovals()))
+
+  api.get('/project/new-mr', async (c) => {
+    const repoPath = c.req.query('repoPath') ?? ''
+    if (!gitTools || !repoPath)
+      return c.json({ status: null })
+    const projectRef = readProjectRef(c)!
+    const { defaultBranch } = await c.var.projectClient.project()
+    const status = await readBranchStatus(gitTools, projectRef, repoPath, defaultBranch)
+    if (!status)
+      return c.json({ status: null })
+    const [open, heads] = await Promise.all([
+      c.var.projectClient.openMergeRequestForBranch(status.branch),
+      c.var.projectClient.mergeRequestHeadsForBranch(status.branch),
+    ])
+    return c.json({ status: open === null && !heads.includes(status.head) ? status : null })
+  })
+
+  api.post('/project/new-mr/draft', async (c) => {
+    const chat = options.chat
+    if (!gitTools || !chat || !await chat.available())
+      return c.json({ error: 'Claude Code is not installed.' }, 404)
+    const { repoPath, target, model, effort } = await c.req.json<{ repoPath?: string, target?: string, model?: string, effort?: string }>()
+    if (!repoPath || !target)
+      return c.json({ error: 'Expected repoPath and target' }, 400)
+    const [input, recentTitles] = await Promise.all([
+      readDraftInput(gitTools, readProjectRef(c)!, repoPath, target),
+      c.var.projectClient.recentTitles().catch(() => []),
+    ])
+    return c.json(await chat.draftMergeRequest({ ...input, recentTitles, model: String(model ?? ''), effort: String(effort ?? '') }))
+  })
+
+  api.post('/project/new-mr', async (c) => {
+    if (!gitTools)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const input = await c.req.json<{ repoPath?: string, branch?: string, target?: string, title?: string, description?: string }>()
+    if (!input.repoPath || !input.branch || !input.target || !input.title?.trim())
+      return c.json({ error: 'Expected repoPath, branch, target and title' }, 400)
+    const projectRef = readProjectRef(c)!
+    const existing = await c.var.projectClient.openMergeRequestForBranch(input.branch)
+    if (existing !== null)
+      return c.json({ ...projectRef, iid: existing })
+    await pushBranch(gitTools, projectRef, input.repoPath, input.branch)
+    const iid = await c.var.projectClient.createMergeRequest({ source: input.branch, target: input.target, title: input.title.trim(), description: input.description ?? '' })
+    return c.json({ ...projectRef, iid })
+  })
 
   api.get('/project/counts', async c => c.json(await c.var.projectClient.counts(readIds(c.req.query('authorIds')))))
 

@@ -23,6 +23,7 @@ import { matchesQuickFilter } from '../lib/mr-display'
 import { formatFilter, matchesMrQuery, needsApprovals, parseMrQuery, searchText, withoutApprovalFilters } from '../lib/mr-query'
 import { rememberHomeSearch } from '../lib/last-home'
 import { parseProjectInput, useSettings } from '../lib/settings'
+import { NewMrCard } from '../components/new-mr-card'
 
 const OPEN_LIMIT = 500
 const PAGE_STEP = 30
@@ -320,6 +321,7 @@ export function HomePage() {
 
       {project && (
         <main className={css({ maxW: '1200px', mx: 'auto', px: { base: '4', md: '8' }, py: '8', display: 'flex', flexDir: 'column', gap: '5' })}>
+          <NewMrCard project={project} />
           <div className={css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '4' })}>
             <div>
               <h1 className={css({ fontSize: '2xl', fontWeight: 'semibold', letterSpacing: '-0.01em' })}>Merge requests</h1>
