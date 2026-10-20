@@ -94,6 +94,8 @@ export function useApprovalActions(ref: MrRef) {
   return { approve, unapprove }
 }
 
+export const mergeStatusKey = keys.mergeStatus
+
 const BUSY_POLL_MS = 5_000
 const IDLE_POLL_MS = 30_000
 

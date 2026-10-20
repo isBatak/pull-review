@@ -607,7 +607,7 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
           </div>
 
           <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
-            <MergeStatusBar mrRef={mrRef} />
+            <MergeStatusBar mrRef={mrRef} repoPath={localRepo.path} />
             {error && <div className={css({ mb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error}</div>}
             <form
               className={composerBox}

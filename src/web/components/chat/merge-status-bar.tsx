@@ -1,12 +1,18 @@
 import type { MergeStatus, MrRef } from '../../../shared/types'
 import type { MergeSummary, MergeTone } from '../../../shared/merge-status'
-import { ChevronDown, ExternalLink, GitMerge, Loader2 } from 'lucide-react'
+import { ChevronDown, ExternalLink, GitMerge, Loader2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { mrReference, summarizeJobs, summarizeMergeStatus } from '../../../shared/merge-status'
 import { useApprovals, useDiscussions, useMergeActions, useMergeStatus } from '../../hooks/use-merge-request'
+import { useLocalChanges } from '../../lib/local-repos'
 import { openExternal } from '../../lib/platform'
+import { diffStat } from '../../../shared/ship-flow'
+import type { LocalChangedFile, UnpushedCommit } from '../../../shared/local-changes'
+import { useReview } from '../review-context'
 import { Button } from '../ui/button'
+import type { ShipFlow } from './ship-flow'
+import { ShipCard, shipChipLabel, useShipFlow } from './ship-flow'
 
 const TONE_COLOR: Record<MergeTone, string> = {
   idle: css({ color: 'fg.subtle' }),
@@ -169,17 +175,50 @@ function MergeButtons({ status, summary, actions }: MergeButtonsProps) {
   )
 }
 
-export function MergeStatusBar({ mrRef }: { mrRef: MrRef }) {
+function shownSummary(summary: MergeSummary, flow: ShipFlow, merging: boolean): MergeSummary {
+  if (merging)
+    return { tone: 'work', label: 'Merging', action: null }
+  const run = flow.run
+  if (!run || run.stage === 'done')
+    return summary
+  const tone: MergeTone = run.error ? 'fail' : run.stage === 'review' ? 'idle' : 'work'
+  return { tone, label: shipChipLabel(run), action: null }
+}
+
+function ShipButton({ files, unpushed, onClick }: { files: LocalChangedFile[], unpushed: UnpushedCommit[], onClick: () => void }) {
+  const stat = diffStat(files)
+  return (
+    <Button size="xs" variant="solid" onClick={onClick}>
+      <Upload />
+      {files.length ? 'Commit and push' : unpushed.length === 1 ? 'Push 1 commit' : `Push ${unpushed.length} commits`}
+      {files.length > 0 && (
+        <span className={css({ display: 'inline-flex', gap: '1', fontVariantNumeric: 'tabular-nums', opacity: 0.9 })}>
+          <span>{`+${stat.additions}`}</span>
+          <span>{`−${stat.deletions}`}</span>
+        </span>
+      )}
+    </Button>
+  )
+}
+
+export function MergeStatusBar({ mrRef, repoPath }: { mrRef: MrRef, repoPath: string | null }) {
   const query = useMergeStatus(mrRef)
   const actions = useMergeActions(mrRef)
   const { merge, cancelAutoMerge } = actions
   const [open, setOpen] = useState(false)
+  const { mergeRequest } = useReview()
+  const local = useLocalChanges(mrRef, repoPath, mergeRequest.diffRefs.headSha, mergeRequest.sourceBranch).data
+  const belongs = local?.workspace?.belongs !== false
+  const files = belongs ? local?.files ?? [] : []
+  const unpushed = belongs ? local?.unpushed ?? [] : []
+  const flow = useShipFlow(mrRef, repoPath)
   const status = query.data
   if (!status)
     return null
   const summary = summarizeMergeStatus(status)
-  const shown: MergeSummary = merge.isPending ? { tone: 'work', label: 'Merging', action: null } : summary
+  const shown = shownSummary(summary, flow, merge.isPending)
   const error = merge.error ?? cancelAutoMerge.error ?? query.error
+  const shipping = flow.run !== null && flow.run.stage !== 'done' && !flow.run.error
 
   return (
     <div className={css({ mb: '2', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg' })}>
@@ -196,9 +235,12 @@ export function MergeStatusBar({ mrRef }: { mrRef: MrRef }) {
           <ChevronDown className={cx(iconSize, css({ color: 'fg.subtle', transition: 'transform 0.15s' }), open && css({ transform: 'rotate(180deg)' }))} />
         </button>
         <span className={css({ flex: '1' })} />
-        <MergeButtons status={status} summary={summary} actions={actions} />
+        {!shipping && (files.length > 0 || unpushed.length > 0)
+          ? <ShipButton files={files} unpushed={unpushed} onClick={() => void flow.start(files, unpushed)} />
+          : !shipping && <MergeButtons status={status} summary={summary} actions={actions} />}
       </div>
       {error && <p className={css({ px: '2.5', pb: '2', fontSize: 'xs', color: 'danger.fg' })}>{error.message}</p>}
+      <ShipCard mrRef={mrRef} branch={mergeRequest.sourceBranch} flow={flow} />
       {open && <Checks mrRef={mrRef} status={status} />}
     </div>
   )

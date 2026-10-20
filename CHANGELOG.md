@@ -3,6 +3,7 @@
 ## 0.2.14 (2026-10-20)
 
 - The Claude chat shows the merge request's status above the message box, such as Ready to merge or Pipeline running. Click it to see the checks, and merge from there after you confirm.
+- When the merge request's folder has changes that are not pushed, the chat offers Commit and push. Claude plans the commits, you confirm, and one card shows each step until the merge request updates.
 
 ## 0.2.13 (2026-10-19)
 
