@@ -134,6 +134,8 @@ export function parseBackup(text: string): ParsedBackup {
     settings.reviewMode = raw.reviewMode
   if (typeof raw.reviewSignature === 'boolean')
     settings.reviewSignature = raw.reviewSignature
+  if (typeof raw.liveMergeStatus === 'boolean')
+    settings.liveMergeStatus = raw.liveMergeStatus
   if (typeof raw.reviewSignatureText === 'string' && raw.reviewSignatureText.trim())
     settings.reviewSignatureText = raw.reviewSignatureText.slice(0, MAX_SIGNATURE_LENGTH)
 

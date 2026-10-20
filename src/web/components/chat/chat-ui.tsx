@@ -12,6 +12,7 @@ import { createChatUiLibrary } from '../../../shared/chat-ui'
 import { mrReference, summarizeMergeStatus } from '../../../shared/merge-status'
 import { useMergeStatus } from '../../hooks/use-merge-request'
 import { useRevealFile } from '../../lib/file-reveal'
+import { useSettings } from '../../lib/settings'
 import { fileName } from '../../lib/format'
 import { Checks, Dot, TONE_COLOR } from './merge-status-bar'
 
@@ -112,7 +113,10 @@ const Checklist: ComponentRenderer<z.infer<typeof checklistProps>> = ({ props })
 
 const MergeStatus: ComponentRenderer<Record<string, never>> = () => {
   const actions = use(ChatUiContext)!
-  const status = useMergeStatus(actions.mrRef).data
+  const [settings] = useSettings()
+  const status = useMergeStatus(actions.mrRef, settings.liveMergeStatus).data
+  if (!settings.liveMergeStatus)
+    return null
   if (!status)
     return <div className={cx(card, css({ fontSize: 'xs', color: 'fg.muted' }))}>Loading the merge status…</div>
   const summary = summarizeMergeStatus(status)

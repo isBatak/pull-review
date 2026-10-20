@@ -17,6 +17,7 @@ const settings = {
   reviewMode: 'thorough' as const,
   reviewSignature: false,
   reviewSignatureText: 'Drafted with Claude.',
+  liveMergeStatus: true,
 }
 
 describe('settings backup', () => {

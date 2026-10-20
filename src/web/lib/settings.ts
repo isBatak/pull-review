@@ -40,6 +40,7 @@ export interface AppSettings {
   reviewSignature: boolean
   reviewSignatureText: string
   editor: string
+  liveMergeStatus: boolean
 }
 
 export const DEFAULT_BUNDLE_SETTINGS: BundleSettings = {
@@ -71,6 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reviewSignature: true,
   reviewSignatureText: DEFAULT_SIGNATURE,
   editor: 'auto',
+  liveMergeStatus: false,
 }
 
 export function useSettings() {

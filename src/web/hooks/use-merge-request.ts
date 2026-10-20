@@ -99,10 +99,11 @@ export const mergeStatusKey = keys.mergeStatus
 const BUSY_POLL_MS = 5_000
 const IDLE_POLL_MS = 30_000
 
-export function useMergeStatus(ref: MrRef) {
+export function useMergeStatus(ref: MrRef, enabled = true) {
   return useQuery({
     queryKey: keys.mergeStatus(ref),
     queryFn: () => api.mergeStatus(ref),
+    enabled,
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data)

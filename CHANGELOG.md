@@ -2,6 +2,7 @@
 
 ## 0.2.14 (2026-10-20)
 
+- The new merge features below are experimental and off by default, so Pull Review sends no extra requests to GitLab. Turn them on in Settings, AI, Merge status and actions.
 - The Claude chat shows the merge request's status above the message box, such as Ready to merge or Pipeline running. Click it to see the checks, and merge from there after you confirm.
 - When the merge request's folder has changes that are not pushed, the chat offers Commit and push. Claude plans the commits, you confirm, and one card shows each step until the merge request updates.
 - When a merge request has conflicts, the chat shows which lines clash. Claude rebases or merges, following the project's merge method, and fixes them. You review each fix and then push, or undo it. A branch that is only behind gets a Rebase button that uses GitLab's own rebase.

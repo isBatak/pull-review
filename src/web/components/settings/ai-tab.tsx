@@ -113,6 +113,18 @@ export function AiTab({ settings, onChange }: AiTabProps) {
       </div>
       <SignatureSetting settings={settings} onChange={onChange} />
       <div>
+        <span className={fieldLabel}>Merge status and actions (experimental)</span>
+        <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '2', fontSize: 'sm' })}>
+          <Checkbox checked={settings.liveMergeStatus} onCheckedChange={liveMergeStatus => onChange({ liveMergeStatus })} label="Show the merge status in the Claude chat" />
+          <span className={css({ cursor: 'pointer', userSelect: 'none' })} onClick={() => onChange({ liveMergeStatus: !settings.liveMergeStatus })}>Show the merge status in the Claude chat</span>
+        </span>
+        <p className={fieldHint}>
+          {settings.liveMergeStatus
+            ? 'The chat shows the merge request status and offers merge, rebase, commit and push, and conflict fixes. The start page offers Create MR. The status is checked every 5 seconds while something runs and every 30 seconds otherwise, which adds requests to your GitLab server.'
+            : 'Off. Pull Review does not check the merge status in the background, and the merge, rebase, commit and push, conflict and Create MR actions are hidden.'}
+        </p>
+      </div>
+      <div>
         <span className={fieldLabel}>Full files</span>
         <p className={css({ fontSize: 'sm', color: 'fg.muted' })}>
           Claude sees only the diff unless the project has a local repository. Add one in General, under Local repositories, or from the chat panel. Pull Review then makes a temporary git worktree at the merge request's commit so Claude can read full files.
