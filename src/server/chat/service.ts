@@ -11,6 +11,7 @@ import { findExecutable } from '../local/host'
 import { expandHome } from '../local/git'
 import type { ResolvedFile, ResolvePromptInput } from '../../shared/conflicts'
 import type { MrDraft, MrDraftPromptInput } from '../../shared/new-mr'
+import { buildChatUiPrompt } from '../../shared/chat-ui'
 import { buildMrDraftPrompt, MR_DRAFT_SCHEMA, MR_DRAFT_SYSTEM_PROMPT, readMrDraft } from '../../shared/new-mr'
 import { buildResolvePrompt, readResolution, RESOLVE_SCHEMA, RESOLVE_SYSTEM_PROMPT } from '../../shared/conflicts'
 import { buildCommitPlanPrompt, COMMIT_PLAN_SCHEMA, COMMIT_PLAN_SYSTEM_PROMPT, normalizeCommitPlan, readCommitPlan, splitInfo } from '../../shared/commit-plan'
@@ -98,6 +99,12 @@ export interface ChatService {
   setFindingStatus: (ref: MrRef, ids: string[], status: FindingStatus) => Promise<ReviewRunState>
   setFindingDraft: (ref: MrRef, id: string, draft: string | null) => Promise<ReviewRunState>
   dispose: () => Promise<void>
+}
+
+const chatUiPrompt = buildChatUiPrompt()
+
+function chatSystemPrompt(base: string) {
+  return `${base}\n\n${chatUiPrompt}`
 }
 
 function createId() {
@@ -418,7 +425,7 @@ export function createChatService(host: LocalHost): ChatService {
       const update = contextUpdate(session, files)
       session.seenContext = update.seen
       const message = withUpdateNote(update.note, buildPrompt(input.text, input.contexts))
-      const systemPrompt = buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir })
+      const systemPrompt = chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }))
       const mcpConfig = await writeCommentTool(contextDir, mr.files)
       await host.writeFile(promptFile, message)
       rememberSent(session.sent, question.id, { message, systemPrompt, files: [...files.filter(file => !file.name.startsWith('diffs/')).map(file => file.path), `${contextDir}/diffs/ (one diff per changed file)`, ...(worktreeDir ? [worktreeDir] : [])] })
@@ -554,7 +561,7 @@ export function createChatService(host: LocalHost): ChatService {
       const fileDiffs = files.filter(file => file.name.startsWith('diffs/'))
       const prompt = {
         message: withUpdateNote(contextUpdate(session, files).note, buildPrompt(input.text, input.contexts)),
-        systemPrompt: buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }),
+        systemPrompt: chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir })),
         files: [],
       }
       const fileDiffList: ChatPromptSection = {

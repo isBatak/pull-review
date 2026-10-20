@@ -16,7 +16,7 @@ import { ShipCard, shipChipLabel, useShipFlow } from './ship-flow'
 import type { ConflictFlow } from './conflict-flow'
 import { ConflictCard, conflictChipLabel, useConflictFlow } from './conflict-flow'
 
-const TONE_COLOR: Record<MergeTone, string> = {
+export const TONE_COLOR: Record<MergeTone, string> = {
   idle: css({ color: 'fg.subtle' }),
   work: css({ color: 'blue.500' }),
   warn: css({ color: 'warning.fg' }),
@@ -45,7 +45,7 @@ const PIPELINE_LABELS: Record<string, { tone: MergeTone, label: string }> = {
 
 const iconSize = css({ w: '3.5', h: '3.5', flexShrink: 0 })
 
-function Dot({ tone }: { tone: MergeTone }) {
+export function Dot({ tone }: { tone: MergeTone }) {
   if (tone === 'work')
     return <Loader2 aria-hidden className={cx(iconSize, TONE_COLOR.work, css({ animation: 'spin' }))} />
   return <span aria-hidden className={cx(css({ w: '2', h: '2', borderRadius: 'full', flexShrink: 0 }), TONE_DOT[tone])} />
@@ -109,7 +109,7 @@ function useCheckRows(mrRef: MrRef, status: MergeStatus): CheckRow[] {
   return rows
 }
 
-function Checks({ mrRef, status }: { mrRef: MrRef, status: MergeStatus }) {
+export function Checks({ mrRef, status }: { mrRef: MrRef, status: MergeStatus }) {
   const rows = useCheckRows(mrRef, status)
   return (
     <ul aria-label="Merge checks" className={css({ display: 'flex', flexDir: 'column', gap: '1.5', px: '2', py: '2', borderTopWidth: '1px', borderColor: 'border.subtle' })}>

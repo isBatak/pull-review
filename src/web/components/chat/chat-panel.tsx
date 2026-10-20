@@ -32,6 +32,8 @@ import { Select } from '../ui/select'
 import { parsePatch, PatchView } from './patch-view'
 import { PromptViewer } from './prompt-viewer'
 import { MergeStatusBar } from './merge-status-bar'
+import { ChatUiContext, OpenUiBlock } from './chat-ui'
+import { CHAT_UI_LANGUAGE } from '../../../shared/chat-ui'
 import { stepsFromTools } from '../../../shared/thinking-steps'
 import { ThinkingTimeline } from '../thinking-timeline'
 import { ClaudeReviewPanel } from '../claude-review-panel'
@@ -432,9 +434,11 @@ function MessageView({ message, baseUrl, mrRef, repoPath, question, onOpen }: Me
       {message.text && (
         <Markdown
           baseUrl={baseUrl}
-          renderCodeBlock={message.status === 'done'
-            ? (language, code) => isPatch(language, code) ? <PatchBlock mrRef={mrRef} repoPath={repoPath} patch={code} question={question} /> : null
-            : undefined}
+          renderCodeBlock={(language, code) => {
+            if (language === CHAT_UI_LANGUAGE)
+              return <OpenUiBlock code={code} streaming={message.status === 'streaming'} />
+            return message.status === 'done' && isPatch(language, code) ? <PatchBlock mrRef={mrRef} repoPath={repoPath} patch={code} question={question} /> : null
+          }}
         >
           {repairDiffFences(message.text)}
         </Markdown>
@@ -593,17 +597,19 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
                 </p>
               </div>
             )}
-            {state.messages.map((message, index) => (
-              <MessageView
-                key={message.id}
-                message={message}
-                baseUrl={baseUrl}
-                mrRef={mrRef}
-                repoPath={localRepo.path}
-                question={contextsForReply(state.messages, index)}
-                onOpen={setViewer}
-              />
-            ))}
+            <ChatUiContext value={{ mrRef, busy: busy || sending, ask: question => void send(question) }}>
+              {state.messages.map((message, index) => (
+                <MessageView
+                  key={message.id}
+                  message={message}
+                  baseUrl={baseUrl}
+                  mrRef={mrRef}
+                  repoPath={localRepo.path}
+                  question={contextsForReply(state.messages, index)}
+                  onOpen={setViewer}
+                />
+              ))}
+            </ChatUiContext>
           </div>
 
           <div className={css({ flexShrink: 0, p: '3', pt: '0' })}>
