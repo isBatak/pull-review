@@ -8,15 +8,13 @@ import { WithTooltip } from './ui/button'
 const chip = css({
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '1',
-  maxW: '72',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '5',
   h: '5',
-  px: '1.5',
-  fontSize: '2xs',
-  fontFamily: 'mono',
   borderRadius: 'sm',
   cursor: 'pointer',
-  '& svg': { w: '3', h: '3', flexShrink: 0 },
+  '& svg': { w: '3.5', h: '3.5' },
 })
 
 const okTone = css({ color: 'fg.muted', bg: 'bg.muted' })
@@ -38,10 +36,11 @@ export function LocalCheckoutChip({ mrRef, headSha, onSetUp }: { mrRef: MrRef, h
   const name = folderName(localRepo.path)
   if (checkout.isFetching) {
     return (
-      <span className={cx(chip, okTone, css({ cursor: 'default' }))}>
-        <Loader2 className={css({ animation: 'spin' })} />
-        <span className={css({ truncate: true, color: 'fg.subtle' })}>Switching {name}…</span>
-      </span>
+      <WithTooltip label={`Switching ${name}…`}>
+        <span role="status" aria-label={`Switching ${name}`} className={cx(chip, okTone, css({ cursor: 'default' }))}>
+          <Loader2 className={css({ animation: 'spin' })} />
+        </span>
+      </WithTooltip>
     )
   }
 
@@ -66,14 +65,14 @@ export function LocalCheckoutChip({ mrRef, headSha, onSetUp }: { mrRef: MrRef, h
         : data?.message ?? `${data?.path} is on the merge request's branch. Opening files in your editor uses it.`
 
   return (
-    <WithTooltip label={tooltip}>
+    <WithTooltip label={<><strong className={css({ display: 'block', fontFamily: 'mono' })}>{label}</strong>{tooltip}</>}>
       <button
         type="button"
+        aria-label={`${label}. ${tooltip}`}
         onClick={() => (data?.status === 'main-checkout' ? onSetUp() : void checkout.refetch())}
         className={cx(chip, ok ? okTone : warnTone)}
       >
         {ok ? <FolderGit2 /> : <CircleAlert />}
-        <span className={css({ truncate: true })}>{label}</span>
       </button>
     </WithTooltip>
   )
