@@ -25,4 +25,5 @@ export interface LocalCheckout {
   branch: string
   sha: string
   message: string | null
+  otherPath?: string | null
 }

@@ -5,6 +5,7 @@
 - Review buttons moved from the header into a floating toolbar at the bottom of the code. Each has a keyboard shortcut, shown when you hover it: `S`, `U`, `W`, `T`, `R`, `G`, `C` and `,`.
 - Hover the line counts in the header to see them split by file group.
 - Long branch names in the header are shortened in the middle, so you still see how they start and end.
+- The local folder status in the header is now an icon. Hover it for the details, including which folder already has the branch checked out.
 - Tabs look like folder tabs with rounded corners instead of underlines. In a review, the section and file group tabs sit on layers that open into each other.
 - Type `/` in the chat for common prompts, such as `/risk` for a merge risk card.
 - The chat's Send, Inspect and model buttons are smaller.

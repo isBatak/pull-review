@@ -56,19 +56,32 @@ export function LocalCheckoutChip({ mrRef, headSha, onSetUp }: { mrRef: MrRef, h
         : data?.status === 'dirty'
           ? `${name} not switched`
           : 'Set up a worktree'
-  const tooltip = failed
-    ? `${failed.message} Click to try again.`
-    : data?.status === 'main-checkout'
-      ? `${data.message} Click to open Settings.`
-      : data?.status === 'dirty'
-        ? `${data.message} Click to try again.`
-        : data?.message ?? `${data?.path} is on the merge request's branch. Opening files in your editor uses it.`
+  const message = failed
+    ? failed.message
+    : data?.message ?? `${data?.path} is on the merge request's branch. Opening files in your editor uses it.`
+  const hint = data?.status === 'main-checkout' ? 'Click to open Settings.' : ok ? null : 'Click to try again.'
+  const otherPath = data?.otherPath ?? null
 
   return (
-    <WithTooltip label={<><strong className={css({ display: 'block', fontFamily: 'mono' })}>{label}</strong>{tooltip}</>}>
+    <WithTooltip
+      contentStyle={{ maxW: '80' }}
+      label={(
+        <span className={css({ display: 'flex', flexDir: 'column', gap: '1.5', py: '0.5' })}>
+          <strong className={css({ fontFamily: 'mono', wordBreak: 'break-all' })}>{label}</strong>
+          <span>{message}</span>
+          {otherPath && (
+            <span className={css({ display: 'flex', flexDir: 'column', gap: '0.5' })}>
+              <span className={css({ opacity: 0.7 })}>Checked out in</span>
+              <code className={css({ fontFamily: 'mono', wordBreak: 'break-all' })}>{otherPath}</code>
+            </span>
+          )}
+          {hint && <span className={css({ opacity: 0.7 })}>{hint}</span>}
+        </span>
+      )}
+    >
       <button
         type="button"
-        aria-label={`${label}. ${tooltip}`}
+        aria-label={[label, message, otherPath && `Checked out in ${otherPath}`, hint].filter(Boolean).join('. ')}
         onClick={() => (data?.status === 'main-checkout' ? onSetUp() : void checkout.refetch())}
         className={cx(chip, ok ? okTone : warnTone)}
       >

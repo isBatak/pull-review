@@ -15,6 +15,16 @@ function baseName(path: string) {
   return path.slice(path.lastIndexOf('/') + 1)
 }
 
+export function worktreeWithBranch(porcelain: string, branch: string, except: string): string | null {
+  for (const block of porcelain.split(/\n\s*\n/)) {
+    const path = /^worktree (.+)$/m.exec(block)?.[1]
+    const checkedOut = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1]
+    if (path && checkedOut === branch && path !== except)
+      return path
+  }
+  return null
+}
+
 export function createRepoLinks(host: LocalHost, tools: GitTools) {
   const { git, gitOk } = tools
 
@@ -120,8 +130,13 @@ export function createRepoLinks(host: LocalHost, tools: GitTools) {
           ? ['checkout', '--quiet', '-b', branch, '--track', `${repo.remote}/${branch}`]
           : ['checkout', '--quiet', '-b', branch, sha]
     const switched = await git(switchArgs, path, CHECKOUT_TIMEOUT_MS)
-    if (switched.code !== 0)
-      return detachAt(path, sha, `${branch} could not be checked out here, probably because another folder has it checked out. The merge request's commit is checked out without a branch.`, branch)
+    if (switched.code !== 0) {
+      const otherPath = worktreeWithBranch((await git(['worktree', 'list', '--porcelain'], path)).stdout, branch, path)
+      const detached = await detachAt(path, sha, otherPath
+        ? 'The branch is already checked out in another folder, and git allows that in only one folder at a time. This folder shows the merge request\'s commit without a branch.'
+        : 'The branch could not be checked out here, probably because another folder has it. This folder shows the merge request\'s commit without a branch.', branch)
+      return { ...detached, otherPath }
+    }
     if (localSha && localSha !== sha)
       await gitOk(['merge', '--quiet', '--ff-only', sha], path, CHECKOUT_TIMEOUT_MS)
     return { status: 'ready', path, branch, sha, message: null }
