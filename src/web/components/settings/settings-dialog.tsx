@@ -52,6 +52,8 @@ const tabTrigger = css({
   _selected: { color: 'fg.default', borderColor: 'accent.default' },
 })
 
+const tabPanel = css({ flex: '1', minH: '0', overflowY: 'auto', px: '6', pt: '5', pb: '6' })
+
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -303,8 +305,8 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
       <Portal>
         <Dialog.Backdrop className={css({ position: 'fixed', inset: '0', zIndex: 'overlay', bg: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' })} />
         <Dialog.Positioner className={css({ position: 'fixed', inset: '0', zIndex: 'modal', display: 'flex', alignItems: 'center', justifyContent: 'center', p: '6' })}>
-          <Dialog.Content className={css({ w: 'full', maxW: '920px', maxH: 'calc(100dvh - 48px)', overflowY: 'auto', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', boxShadow: 'popover', p: '6', outline: 'none' })}>
-            <div className={css({ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: '4' })}>
+          <Dialog.Content className={css({ w: 'full', maxW: '920px', maxH: 'calc(100dvh - 48px)', display: 'flex', flexDir: 'column', overflow: 'hidden', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', boxShadow: 'popover', outline: 'none' })}>
+            <div className={css({ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', px: '6', pt: '6', pb: '4', flexShrink: 0 })}>
               <div>
                 <Dialog.Title className={css({ fontSize: 'lg', fontWeight: 'semibold' })}>Settings</Dialog.Title>
                 <Dialog.Description className={css({ fontSize: 'sm', color: 'fg.muted' })}>Saved on this device.</Dialog.Description>
@@ -313,8 +315,8 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
                 <IconButton label="Close settings"><X /></IconButton>
               </Dialog.CloseTrigger>
             </div>
-            <Tabs.Root defaultValue={initialTab} lazyMount unmountOnExit>
-              <Tabs.List className={css({ display: 'flex', borderBottomWidth: '1px', borderColor: 'border.default', mb: '5' })}>
+            <Tabs.Root defaultValue={initialTab} lazyMount unmountOnExit className={css({ display: 'flex', flexDir: 'column', flex: '1', minH: '0' })}>
+              <Tabs.List className={css({ display: 'flex', flexShrink: 0, mx: '6', borderBottomWidth: '1px', borderColor: 'border.default' })}>
                 <Tabs.Trigger value="general" className={tabTrigger}>General</Tabs.Trigger>
                 <Tabs.Trigger value="teams" className={tabTrigger}>Teams</Tabs.Trigger>
                 <Tabs.Trigger value="categories" className={tabTrigger}>Categories</Tabs.Trigger>
@@ -322,12 +324,12 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
                 <Tabs.Trigger value="ai" className={tabTrigger}>AI</Tabs.Trigger>
                 <Tabs.Trigger value="backup" className={tabTrigger}>Backup</Tabs.Trigger>
               </Tabs.List>
-              <Tabs.Content value="general"><GeneralTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="teams"><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="categories"><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="bundle"><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="ai"><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
-              <Tabs.Content value="backup"><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
+              <Tabs.Content value="general" className={tabPanel}><GeneralTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="teams" className={tabPanel}><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="categories" className={tabPanel}><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="bundle" className={tabPanel}><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="ai" className={tabPanel}><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="backup" className={tabPanel}><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
             </Tabs.Root>
           </Dialog.Content>
         </Dialog.Positioner>

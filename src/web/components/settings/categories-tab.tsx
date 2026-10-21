@@ -1,6 +1,6 @@
 import type { CategoryConfig } from '../../../shared/grouping'
 import type { AppSettings } from '../../lib/settings'
-import { ArrowDown, ArrowUp, FlaskConical, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, CornerDownRight, FlaskConical, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { createClassifier, DEFAULT_CATEGORIES, parseRules } from '../../../shared/grouping'
@@ -177,24 +177,23 @@ function PathTester({ categories }: { categories: CategoryConfig[] }) {
 
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '2', p: '3', bg: 'bg.subtle', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg' })}>
-      <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', fontWeight: 'semibold', '& svg': { w: '3.5', h: '3.5', color: 'accent.fg' } })}>
+      <label htmlFor="category-path-test" className={css({ display: 'inline-flex', alignItems: 'center', gap: '1.5', fontSize: 'xs', fontWeight: 'semibold', '& svg': { w: '3.5', h: '3.5', color: 'accent.fg' } })}>
         <FlaskConical />
         Test a file path
-      </span>
-      <div className={css({ display: 'flex', alignItems: 'center', gap: '3' })}>
-        <div className={css({ flex: '1', display: 'flex', alignItems: 'center', gap: '2', h: '9', px: '3', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', _focusWithin: { borderColor: 'accent.default' } })}>
-          <FileIcon name={path.slice(path.lastIndexOf('/') + 1) || 'file'} />
-          <input value={path} onChange={event => setPath(event.target.value)} spellCheck={false} className={css({ flex: '1', minW: '0', bg: 'transparent', outline: 'none', fontFamily: 'mono', fontSize: 'xs' })} aria-label="File path to test" />
-        </div>
-        {result && (
-          <div className={css({ flexShrink: 0, textAlign: 'right', fontSize: 'xs', lineHeight: '1.4' })}>
-            <div className={css({ fontWeight: 'semibold' })}>{result.category.label}</div>
-            <div className={css({ color: 'fg.subtle' })}>
-              {result.rule ? <span className={code}>{result.rule}</span> : 'no rule matched'}
-            </div>
-          </div>
-        )}
+      </label>
+      <div className={css({ display: 'flex', alignItems: 'center', gap: '2', h: '9', px: '3', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', _focusWithin: { borderColor: 'accent.default' } })}>
+        <FileIcon name={path.slice(path.lastIndexOf('/') + 1) || 'file'} />
+        <input id="category-path-test" value={path} onChange={event => setPath(event.target.value)} spellCheck={false} placeholder="src/locales/en.json" className={css({ flex: '1', minW: '0', bg: 'transparent', outline: 'none', fontFamily: 'mono', fontSize: 'xs', _placeholder: { color: 'fg.subtle' } })} />
       </div>
+      {result && (
+        <div className={css({ display: 'flex', alignItems: 'center', gap: '2', minW: '0', fontSize: 'xs', color: 'fg.muted', '& svg': { w: '3.5', h: '3.5', flexShrink: 0 } })}>
+          <CornerDownRight />
+          <span>Lands in</span>
+          <span className={css({ fontWeight: 'semibold', color: 'fg.default' })}>{result.category.label || 'Untitled'}</span>
+          <span className={css({ color: 'fg.subtle' })}>{result.rule ? 'by rule' : '(no rule matched)'}</span>
+          {result.rule && <span className={cx(code, css({ truncate: true, minW: '0' }))}>{result.rule}</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -231,9 +230,39 @@ export function CategoriesTab({ settings, onChange }: CategoriesTabProps) {
   return (
     <div className={css({ display: 'flex', flexDir: 'column', gap: '4' })}>
       <PathTester categories={categories} />
-      <div className={css({ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '5', minH: '440px' })}>
-        <div className={css({ display: 'flex', flexDir: 'column', gap: '1' })}>
-          <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1' })}>The first matching category wins. Order also sets the order on the review page.</p>
+      <div className={css({ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '6', alignItems: 'start' })}>
+        <div className={css({ display: 'flex', flexDir: 'column', gap: '1', minW: '0' })}>
+          <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '2', mb: '1' })}>
+            <Button variant="outline" size="sm" onClick={addCategory}>
+              <Plus />
+              New category
+            </Button>
+            {confirmReset
+              ? (
+                  <div className={css({ display: 'flex', gap: '1' })}>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>Cancel</Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => {
+                        save(DEFAULT_CATEGORIES)
+                        setActiveId(DEFAULT_CATEGORIES[0]!.id)
+                        setConfirmReset(false)
+                      }}
+                    >
+                      Reset all
+                    </Button>
+                  </div>
+                )
+              : (
+                  <IconButton size="sm" label="Reset to defaults" onClick={() => setConfirmReset(true)}>
+                    <RotateCcw />
+                  </IconButton>
+                )}
+          </div>
+          <p className={css({ fontSize: 'xs', color: 'fg.subtle', mb: '1', lineHeight: '1.5' })}>
+            {confirmReset ? 'This replaces all your categories with the defaults.' : 'The first matching category wins. Order also sets the order on the review page.'}
+          </p>
           {categories.map((category, index) => (
             <div
               key={category.id}
@@ -242,46 +271,15 @@ export function CategoriesTab({ settings, onChange }: CategoriesTabProps) {
             >
               <button type="button" onClick={() => setActiveId(category.id)} className={css({ flex: '1', minW: '0', display: 'flex', alignItems: 'center', gap: '2', h: 'full', textAlign: 'left', fontSize: 'sm', cursor: 'pointer' })}>
                 <span className={css({ truncate: true, fontWeight: active?.id === category.id ? 'medium' : 'normal' })}>{category.label || 'Untitled'}</span>
-                {category.builtin && <span className={css({ fontSize: '2xs', color: 'fg.subtle' })}>built in</span>}
-                {category.collapsed && <span className={css({ fontSize: '2xs', color: 'fg.subtle' })}>collapsed</span>}
+                {category.builtin && <span className={css({ flexShrink: 0, fontSize: '2xs', color: 'fg.subtle' })}>built in</span>}
+                {category.collapsed && <span className={css({ flexShrink: 0, fontSize: '2xs', color: 'fg.subtle' })}>collapsed</span>}
               </button>
-              <span className={css({ display: 'flex', opacity: 0, _groupHover: { opacity: 1 }, _focusWithin: { opacity: 1 } })}>
+              <span className={css({ display: 'flex', opacity: 0, _groupHover: { opacity: 1 }, _focusWithin: { opacity: 1 }, '& button': { w: '6', _hover: { _enabled: { bg: 'bg.emphasized' } } }, '& svg': { w: '3.5', h: '3.5' } })}>
                 <IconButton size="xs" label="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></IconButton>
                 <IconButton size="xs" label="Move down" disabled={index === categories.length - 1} onClick={() => move(index, 1)}><ArrowDown /></IconButton>
               </span>
             </div>
           ))}
-          <Button variant="ghost" size="md" onClick={addCategory} className={css({ justifyContent: 'flex-start', px: '2.5' })}>
-            <Plus />
-            New category
-          </Button>
-          <div className={css({ mt: 'auto', pt: '3' })}>
-            {confirmReset
-              ? (
-                  <div className={css({ display: 'flex', flexDir: 'column', gap: '2', fontSize: 'xs', color: 'fg.muted' })}>
-                    Replace all categories with the defaults?
-                    <div className={css({ display: 'flex', gap: '2' })}>
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>Cancel</Button>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          save(DEFAULT_CATEGORIES)
-                          setActiveId(DEFAULT_CATEGORIES[0]!.id)
-                          setConfirmReset(false)
-                        }}
-                      >
-                        Reset
-                      </Button>
-                    </div>
-                  </div>
-                )
-              : (
-                  <Button size="sm" variant="ghost" onClick={() => setConfirmReset(true)}>
-                    <RotateCcw />
-                    Reset to defaults
-                  </Button>
-                )}
-          </div>
         </div>
         {active && (
           <CategoryEditor

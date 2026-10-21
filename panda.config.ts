@@ -95,6 +95,11 @@ const button = defineRecipe({
         color: 'fg.muted',
         _hover: { _enabled: { bg: 'bg.muted', color: 'fg.default' } },
       },
+      danger: {
+        bg: 'danger.solid',
+        color: 'white',
+        _hover: { _enabled: { filter: 'brightness(1.08)' } },
+      },
       success: {
         bg: 'success.solid',
         color: 'fg.onAccent',
