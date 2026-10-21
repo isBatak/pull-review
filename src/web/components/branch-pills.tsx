@@ -44,7 +44,7 @@ function BranchPill({ name, copied, onCopy }: { name: string, copied: boolean, o
     <WithTooltip label={copied ? 'Copied' : `Copy ${name}`}>
       <button type="button" className={pill} onClick={() => onCopy(name)} aria-label={`Copy branch ${name}`}>
         <span className={css({ display: 'flex', minW: '0', w: 'full', overflow: 'hidden' })}>
-          <MiddleTruncate split="center" minimumLength={12}>{name}</MiddleTruncate>
+          <MiddleTruncate split="center" priority="equal" minimumLength={12}>{name}</MiddleTruncate>
         </span>
       </button>
     </WithTooltip>
