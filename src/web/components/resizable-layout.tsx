@@ -89,12 +89,14 @@ function WideLayout({ sidebar, aside, onAsideClose, children }: ResizableLayoutP
     },
   })
 
+  // Compares the real panel with the open state on every render, so a splitter rebuilt from stale sizes (after a hot reload, for one) is corrected too.
   useEffect(() => {
-    if (hasAside)
+    const collapsed = splitter.isPanelCollapsed('aside')
+    if (hasAside && collapsed)
       splitter.setSizes(sizesFor(sidebarPx, asidePx, window.innerWidth))
-    else if (!splitter.isPanelCollapsed('aside'))
+    else if (!hasAside && !collapsed)
       splitter.collapsePanel('aside')
-  }, [hasAside])
+  })
 
   function reset(nextSidebarPx: number, nextAsidePx: number) {
     splitter.setSizes(sizesFor(nextSidebarPx, hasAside ? nextAsidePx : 0, window.innerWidth))

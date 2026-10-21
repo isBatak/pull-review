@@ -1,7 +1,7 @@
 import type { CategoryConfig } from './grouping'
 import type { DiffFile } from './types'
 import { describe, expect, it } from 'vitest'
-import { compareCompanionPaths, createClassifier, DEFAULT_CATEGORIES, isRuleError, parseRule, parseRules } from './grouping'
+import { compareCompanionPaths, createClassifier, DEFAULT_CATEGORIES, diffStatsByGroup, isRuleError, parseRule, parseRules } from './grouping'
 
 function file(path: string, overrides: Partial<DiffFile> = {}): DiffFile {
   return {
@@ -151,5 +151,23 @@ describe('compareCompanionPaths', () => {
 
   it('pairs files in __tests__ with the source in the parent folder', () => {
     expect(['src/__tests__/util.test.ts', 'src/util.ts', 'src/other.ts'].sort(compareCompanionPaths)).toEqual(['src/other.ts', 'src/util.ts', 'src/__tests__/util.test.ts'])
+  })
+})
+
+describe('diffStatsByGroup', () => {
+  const file = (additions: number, deletions: number) => ({ additions, deletions }) as DiffFile
+
+  it('adds up each group and the total, and skips groups without changed lines', () => {
+    expect(diffStatsByGroup([
+      { key: 'code', label: 'Code', files: [file(50, 5), file(5, 2)] },
+      { key: 'tests', label: 'Tests', files: [file(77, 1)] },
+      { key: 'other', label: 'Other', files: [file(0, 0)] },
+    ])).toEqual({
+      groups: [
+        { key: 'code', label: 'Code', additions: 55, deletions: 7 },
+        { key: 'tests', label: 'Tests', additions: 77, deletions: 1 },
+      ],
+      total: { additions: 132, deletions: 8 },
+    })
   })
 })

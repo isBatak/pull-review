@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.15 (2026-10-21)
+
+- Review buttons moved from the header into a floating toolbar at the bottom of the code. Each has a keyboard shortcut, shown when you hover it: `S`, `U`, `W`, `T`, `R`, `G`, `C` and `,`.
+- Hover the line counts in the header to see them split by file group.
+- Long branch names in the header are shortened in the middle, so you still see how they start and end.
+- Tabs look like folder tabs with rounded corners instead of underlines. In a review, the section and file group tabs sit on layers that open into each other.
+- Type `/` in the chat for common prompts, such as `/risk` for a merge risk card.
+- The chat's Send, Inspect and model buttons are smaller.
+- Settings keeps its tabs in place when you scroll, and Categories are easier to manage.
+- Fixed: tooltip arrows lost their border when the tooltip opened above or beside a button.
+- Fixed: a file's header kept its rounded corners while pinned to the top, so code showed through the corners.
+
 ## 0.2.14 (2026-10-20)
 
 - The new merge features below are experimental and off by default, so Pull Review sends no extra requests to GitLab. Turn them on in Settings, AI, Merge status and actions.

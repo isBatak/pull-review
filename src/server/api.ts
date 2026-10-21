@@ -409,6 +409,7 @@ export function createApi(options: ApiOptions) {
       repoPath: input.repoPath ?? null,
       model: String(input.model ?? ''),
       effort: String(input.effort ?? ''),
+      mergeStatus: input.mergeStatus === true,
     }
   }
 

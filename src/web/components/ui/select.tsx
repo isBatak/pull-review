@@ -11,7 +11,7 @@ export interface SelectOption {
   hint?: ReactNode
 }
 
-type SelectVariant = 'outline' | 'compact' | 'ghost'
+type SelectVariant = 'outline' | 'compact' | 'ghost' | 'subtle'
 
 interface SelectProps {
   value: string
@@ -54,6 +54,7 @@ const trigger = css({
 const triggerVariants: Record<SelectVariant, string> = {
   outline: css({ w: 'full', maxW: 'sm', h: '9', px: '2.5', fontSize: 'sm', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', '& > svg': { w: '4', h: '4' }, _open: { borderColor: 'accent.default' } }),
   compact: css({ h: '7', px: '2', fontSize: 'xs', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'md', '& > svg': { w: '3.5', h: '3.5' }, _open: { borderColor: 'accent.default' } }),
+  subtle: css({ h: '6', px: '2', fontSize: 'xs', color: 'fg.default', bg: 'bg.muted', borderRadius: 'md', _hover: { bg: 'bg.emphasized' }, _open: { bg: 'bg.emphasized' }, '& > svg': { w: '3', h: '3' } }),
   ghost: css({ h: '6', px: '1.5', fontSize: 'xs', color: 'fg.muted', bg: 'transparent', borderRadius: 'md', _hover: { bg: 'bg.muted', color: 'fg.default' }, _open: { bg: 'bg.muted', color: 'fg.default' }, '& > svg': { w: '3', h: '3' } }),
 }
 

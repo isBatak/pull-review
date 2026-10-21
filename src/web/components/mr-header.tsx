@@ -1,40 +1,60 @@
+import type { FileGroup } from '../../shared/grouping'
 import type { DiffFile } from '../../shared/types'
-import type { DiffLayout, ThemeMode } from '../lib/preferences'
-import { ArrowLeft, Check, Columns2, ExternalLink, Layers, Moon, RefreshCw, Rows2, Settings, Sparkles, Sun, WrapText } from 'lucide-react'
+import { ArrowLeft, Check, Layers } from 'lucide-react'
 import { Link } from 'react-router'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
 import { badge } from 'styled-system/recipes'
 import { useApprovalActions, useApprovals } from '../hooks/use-merge-request'
 import { useProjectInfo } from '../hooks/use-project'
+import { diffStatsByGroup } from '../../shared/grouping'
 import { parseMrTitle } from '../../shared/mr-title'
 import { timeAgo } from '../lib/format'
 import { homePath } from '../lib/last-home'
-import { openExternal } from '../lib/platform'
 import { useSettings } from '../lib/settings'
 import { BranchPills } from './branch-pills'
 import { DiffStat } from './file-diff-card'
 import { AppTagBadge, DraftChip, JiraChip } from './mr-list/title-parts'
 import { useReview } from './review-context'
 import { Avatar } from './ui/avatar'
-import { Button, IconButton, WithTooltip } from './ui/button'
-import { Segmented } from './ui/segmented'
+import { Button, WithTooltip } from './ui/button'
 
 const STATE_TONE = { opened: 'success', merged: 'accent', closed: 'danger', locked: 'neutral' } as const
 
 interface MrHeaderProps {
   files: DiffFile[]
-  layout: DiffLayout
-  onLayoutChange: (layout: DiffLayout) => void
-  wrap: boolean
-  onWrapChange: (wrap: boolean) => void
-  theme: ThemeMode
-  onThemeChange: (theme: ThemeMode) => void
-  onRefresh: () => void
-  refreshing: boolean
-  onOpenSettings: () => void
+  groups: FileGroup[]
   localStatus?: React.ReactNode
-  chatOpen: boolean | null
-  onChatOpenChange: (open: boolean) => void
+}
+
+const statCell = css({ fontFamily: 'mono', textAlign: 'right', fontVariantNumeric: 'tabular-nums' })
+
+function DiffStatBreakdown({ groups }: { groups: FileGroup[] }) {
+  const stats = diffStatsByGroup(groups)
+  const row = (label: string, additions: number, deletions: number) => (
+    <>
+      <span>{label}</span>
+      <span className={cx(statCell, css({ color: 'success.fg' }))}>{`+${additions}`}</span>
+      <span className={cx(statCell, css({ color: 'danger.fg' }))}>{`−${deletions}`}</span>
+    </>
+  )
+  const table = (
+    <span className={css({ display: 'grid', gridTemplateColumns: 'auto auto auto', columnGap: '4', rowGap: '1', py: '1', fontSize: 'sm' })}>
+      {stats.groups.map(group => <span key={group.key} className={css({ display: 'contents' })}>{row(group.label, group.additions, group.deletions)}</span>)}
+      {stats.groups.length > 1 && (
+        <>
+          <span aria-hidden className={css({ gridColumn: '1 / -1', my: '0.5', borderTopWidth: '1px', borderColor: 'tooltip.border' })} />
+          {row('Total', stats.total.additions, stats.total.deletions)}
+        </>
+      )}
+    </span>
+  )
+  return (
+    <WithTooltip label={table} contentStyle={{ maxW: 'none', px: '3', py: '2' }}>
+      <span tabIndex={0} aria-label={`${stats.total.additions} lines added and ${stats.total.deletions} removed. Focus to see them by group.`} className={css({ display: 'inline-flex', cursor: 'default', textDecoration: 'underline dotted', textDecorationColor: 'fg.subtle', textUnderlineOffset: '4px', outline: 'none', _focusVisible: { boxShadow: '0 0 0 2px var(--colors-accent-default)', borderRadius: 'sm' } })}>
+        <DiffStat additions={stats.total.additions} deletions={stats.total.deletions} />
+      </span>
+    </WithTooltip>
+  )
 }
 
 function ApproveButton() {
@@ -82,10 +102,8 @@ function ApproveButton() {
   )
 }
 
-export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, theme, onThemeChange, onRefresh, refreshing, onOpenSettings, chatOpen, onChatOpenChange, localStatus }: MrHeaderProps) {
+export function MrHeader({ files, groups, localStatus }: MrHeaderProps) {
   const { mergeRequest } = useReview()
-  const additions = files.reduce((sum, file) => sum + file.additions, 0)
-  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
   const title = parseMrTitle(mergeRequest.title)
   const [settings] = useSettings()
   const jiraBaseUrl = settings.jiraBaseUrl
@@ -142,39 +160,10 @@ export function MrHeader({ files, layout, onLayoutChange, wrap, onWrapChange, th
             {files.length}
             {' files'}
           </span>
-          <DiffStat additions={additions} deletions={deletions} />
+          <DiffStatBreakdown groups={groups} />
         </div>
       </div>
       <div className={css({ display: 'flex', alignItems: 'center', gap: '2', flexShrink: 0 })}>
-        <Segmented
-          label="Diff layout"
-          value={layout}
-          onChange={onLayoutChange}
-          items={[
-            { value: 'split', label: <Columns2 />, title: 'Split view' },
-            { value: 'unified', label: <Rows2 />, title: 'Unified view' },
-          ]}
-        />
-        <IconButton label={wrap ? 'Disable line wrap' : 'Wrap long lines'} onClick={() => onWrapChange(!wrap)} className={wrap ? css({ color: 'accent.fg' }) : undefined}>
-          <WrapText />
-        </IconButton>
-        <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun /> : <Moon />}
-        </IconButton>
-        <IconButton label="Reload from GitLab" onClick={onRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? css({ animation: 'spin' }) : undefined} />
-        </IconButton>
-        <IconButton label="Open in GitLab" onClick={() => openExternal(mergeRequest.webUrl)}>
-          <ExternalLink />
-        </IconButton>
-        {chatOpen !== null && (
-          <IconButton label={chatOpen ? 'Close Claude chat' : 'Ask Claude about this merge request'} onClick={() => onChatOpenChange(!chatOpen)} className={chatOpen ? css({ color: 'accent.fg' }) : undefined}>
-            <Sparkles />
-          </IconButton>
-        )}
-        <IconButton label="Settings" onClick={onOpenSettings}>
-          <Settings />
-        </IconButton>
         <ApproveButton />
       </div>
     </header>

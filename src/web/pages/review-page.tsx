@@ -2,7 +2,7 @@ import type { DiffFile, Discussion, MrPayload, MrRef } from '../../shared/types'
 import { Virtualizer } from '@pierre/diffs/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
 import { BUNDLE_COMMENT_MARKER } from '../../shared/bundle'
 import { mrKey } from '../../shared/mr-ref'
 import { BundlePanel } from '../components/bundle/bundle-panel'
@@ -15,10 +15,11 @@ import { SymbolPopover } from '../components/symbol-popover'
 import { MrHeader } from '../components/mr-header'
 import { OverviewPanel } from '../components/overview-panel'
 import { ResizableLayout } from '../components/resizable-layout'
+import { ReviewToolbar } from '../components/review-toolbar'
 import { ReviewContext } from '../components/review-context'
 import { SettingsDialog } from '../components/settings/settings-dialog'
 import { Sidebar } from '../components/sidebar'
-import { UnderlineTabs } from '../components/ui/underline-tabs'
+import { FolderTabs, folderBar } from '../components/ui/folder-tabs'
 import { useDiscussions, useMergeRequest } from '../hooks/use-merge-request'
 import { ApiError } from '../lib/api'
 import { ChatContext, ChatDraftContext, useChatAvailable, useChatState } from '../lib/chat'
@@ -221,6 +222,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
   const useGroupTabs = settings.groupLayout === 'tabs'
   const activeGroupKey = useGroupTabs && groups.some(group => group.key === params.get('group')) ? params.get('group')! : 'all'
   const visibleGroups = activeGroupKey === 'all' ? groups : groups.filter(group => group.key === activeGroupKey)
+  const showGroupTabs = useGroupTabs && tab === 'code' && groups.length > 1
 
   const setParam = useCallback((key: string, value: string | null) => {
     setParams((current) => {
@@ -313,27 +315,14 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
               <div className={css({ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gridTemplateColumns: 'minmax(0, 1fr)', h: '100dvh' })}>
                 <MrHeader
                   files={payload.files}
-                  layout={layout}
-                  onLayoutChange={setLayout}
-                  wrap={wrap}
-                  onWrapChange={setWrap}
-                  theme={theme}
-                  onThemeChange={setTheme}
-                  refreshing={mrQuery.isFetching || discussionsQuery.isFetching}
-                  onRefresh={() => {
-                    void mrQuery.refetch()
-                    void discussionsQuery.refetch()
-                  }}
-                  onOpenSettings={() => setSettingsOpen(true)}
-              localStatus={(
-                <LocalCheckoutChip
-                  mrRef={mrRef}
-                  headSha={payload.mergeRequest.diffRefs.headSha}
-                  onSetUp={() => setSettingsOpen(true)}
-                />
-              )}
-                  chatOpen={chatAvailable ? chatControls.open : null}
-                  onChatOpenChange={setChatOpen}
+                  groups={groups}
+                  localStatus={(
+                    <LocalCheckoutChip
+                      mrRef={mrRef}
+                      headSha={payload.mergeRequest.diffRefs.headSha}
+                      onSetUp={() => setSettingsOpen(true)}
+                    />
+                  )}
                 />
                 <ResizableLayout
                   aside={chatControls.open ? <ChatDraftContext value={chatDraft}><ChatPanel mrRef={mrRef} baseUrl={context.projectUrl} /></ChatDraftContext> : null}
@@ -350,11 +339,29 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                     />
                   )}
                 >
-                  <div className={css({ display: 'flex', flexDir: 'column', minH: '0', minW: '0' })}>
-                    <div className={css({ flexShrink: 0, px: '4', borderBottomWidth: '1px', borderColor: 'border.default', bg: 'bg.surface' })}>
-                      <div className={css({ display: 'flex', alignItems: 'center', gap: '3' })}>
-                        <UnderlineTabs
+                  <div className={css({ position: 'relative', display: 'flex', flexDir: 'column', minH: '0', minW: '0' })}>
+                    <ReviewToolbar
+                      layout={layout}
+                      onLayoutChange={setLayout}
+                      wrap={wrap}
+                      onWrapChange={setWrap}
+                      theme={theme}
+                      onThemeChange={setTheme}
+                      refreshing={mrQuery.isFetching || discussionsQuery.isFetching}
+                      onRefresh={() => {
+                        void mrQuery.refetch()
+                        void discussionsQuery.refetch()
+                      }}
+                      webUrl={payload.mergeRequest.webUrl}
+                      chatOpen={chatAvailable ? chatControls.open : null}
+                      onChatOpenChange={setChatOpen}
+                      onOpenSettings={() => setSettingsOpen(true)}
+                    />
+                    <div className={css({ flexShrink: 0 })}>
+                      <div className={cx(folderBar, css({ px: '4', pt: '2', bg: 'bg.surface' }))}>
+                        <FolderTabs
                           label="Review sections"
+                          opensInto={showGroupTabs ? 'subtle' : 'canvas'}
                           value={tab}
                           onChange={value => setParam('tab', value === 'code' ? null : value)}
                           tabs={[
@@ -377,35 +384,37 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                           ]}
                         />
                         {tab === 'code' && findingTargets.length > 0 && (
-                          <div className={css({ ml: 'auto', flexShrink: 0 })}>
+                          <div className={css({ ml: 'auto', flexShrink: 0, alignSelf: 'center' })}>
                             <FindingNavigator count={findingTargets.length} index={activeFindingIndex} onJump={jumpToFinding} />
                           </div>
                         )}
                       </div>
-                      {useGroupTabs && tab === 'code' && groups.length > 1 && (
-                        <UnderlineTabs
-                          label="File groups"
-                          size="sm"
-                          value={activeGroupKey}
-                          onChange={value => setParam('group', value === 'all' ? null : value)}
-                          tabs={[
-                            { value: 'all', label: 'All files', count: payload.files.length },
-                            ...groups.map(group => ({ value: group.key, label: group.label, count: group.files.length })),
-                          ]}
-                          className={css({ borderTopWidth: '1px', borderColor: 'border.subtle' })}
-                        />
+                      {showGroupTabs && (
+                        <div className={cx(folderBar, css({ px: '4', pt: '1.5', bg: 'bg.subtle' }))}>
+                          <FolderTabs
+                            label="File groups"
+                            size="sm"
+                            opensInto="canvas"
+                            value={activeGroupKey}
+                            onChange={value => setParam('group', value === 'all' ? null : value)}
+                            tabs={[
+                              { value: 'all', label: 'All files', count: payload.files.length },
+                              ...groups.map(group => ({ value: group.key, label: group.label, count: group.files.length })),
+                            ]}
+                          />
+                        </div>
                       )}
                     </div>
                     {tab === 'local' && localRepo.path && (
                       <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                        <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
+                        <div className={css({ maxW: '1200px', mx: 'auto', p: '6', pb: '20' })}>
                           <LocalChangesPanel mrRef={mrRef} repoPath={localRepo.path} />
                         </div>
                       </div>
                     )}
                     {tab === 'bundle' && (
                       <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                        <div className={css({ maxW: '1200px', mx: 'auto', p: '6' })}>
+                        <div className={css({ maxW: '1200px', mx: 'auto', p: '6', pb: '20' })}>
                           <BundlePanel mrRef={mrRef} />
                         </div>
                       </div>
@@ -413,7 +422,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                     {tab === 'overview'
                       ? (
                           <div className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}>
-                            <div className={css({ maxW: '960px', mx: 'auto', p: '6' })}>
+                            <div className={css({ maxW: '960px', mx: 'auto', p: '6', pb: '20' })}>
                               {discussionsQuery.error && (
                                 <div className={css({ color: 'danger.fg', fontSize: 'sm', mb: '4' })}>
                                   Could not load comments:
@@ -428,7 +437,7 @@ function ReviewView({ payload, mrRef }: { payload: MrPayload, mrRef: MrRef }) {
                       : tab === 'code' && (
                           <Virtualizer
                             className={css({ flex: '1', minH: '0', overflowY: 'auto', bg: 'bg.canvas' })}
-                            contentClassName={css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', maxW: '1600px', mx: 'auto' })}
+                            contentClassName={css({ display: 'flex', flexDir: 'column', gap: '3', p: '4', pb: '20', maxW: '1600px', mx: 'auto' })}
                           >
                               {visibleGroups.map((group, index) => (
                               <div key={group.key} className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>

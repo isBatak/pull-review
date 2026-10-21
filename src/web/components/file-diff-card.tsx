@@ -414,7 +414,7 @@ function FileDiffCardImpl({
   const statusStyle = STATUS_STYLES[file.status]
 
   return (
-    <section ref={sectionRef} id={domIdForFile(file.id)} className={css({ scrollMarginTop: '2' })}>
+    <section ref={sectionRef} id={domIdForFile(file.id)} className={css({ scrollMarginTop: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', overflow: 'clip', bg: 'bg.surface' })}>
       <header
         onClick={() => onToggleCollapsed(file, !collapsed)}
         className={css({
@@ -427,10 +427,8 @@ function FileDiffCardImpl({
           h: '10',
           px: '2.5',
           bg: 'bg.subtle',
-          borderWidth: '1px',
+          borderBottomWidth: collapsed ? '0' : '1px',
           borderColor: 'border.default',
-          borderTopRadius: 'lg',
-          borderBottomRadius: collapsed ? 'lg' : '0',
           cursor: 'pointer',
           userSelect: 'none',
         })}
@@ -519,7 +517,7 @@ function FileDiffCardImpl({
       </header>
 
       {!collapsed && (
-        <div className={css({ borderWidth: '1px', borderTopWidth: '0', borderColor: 'border.default', borderBottomRadius: 'lg', overflow: 'hidden', bg: 'bg.surface' })}>
+        <div className={css({ overflow: 'hidden' })}>
           {status === 'changed' && (
             <div className={css({ display: 'flex', alignItems: 'center', gap: '2', px: '3', py: '1.5', fontSize: 'xs', bg: 'warning.subtle', color: 'warning.fg', '& svg': { w: '3.5', h: '3.5' } })}>
               <FileWarning />

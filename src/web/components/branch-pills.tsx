@@ -1,3 +1,4 @@
+import { MiddleTruncate } from '@pierre/truncate/react'
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { css } from 'styled-system/css'
@@ -24,6 +25,7 @@ const pill = css({
   display: 'inline-flex',
   alignItems: 'center',
   minW: '0',
+  maxW: '20rem',
   h: '5',
   px: '1.5',
   borderRadius: 'md',
@@ -41,7 +43,9 @@ function BranchPill({ name, copied, onCopy }: { name: string, copied: boolean, o
   return (
     <WithTooltip label={copied ? 'Copied' : `Copy ${name}`}>
       <button type="button" className={pill} onClick={() => onCopy(name)} aria-label={`Copy branch ${name}`}>
-        <span className={css({ truncate: true })}>{name}</span>
+        <span className={css({ display: 'flex', minW: '0', w: 'full', overflow: 'hidden' })}>
+          <MiddleTruncate split="center" minimumLength={12}>{name}</MiddleTruncate>
+        </span>
       </button>
     </WithTooltip>
   )

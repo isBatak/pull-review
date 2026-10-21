@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { SegmentGroup } from '@ark-ui/react/segment-group'
 import { css } from 'styled-system/css'
+import { WithTooltip } from './button'
 
 const root = css({
   position: 'relative',
@@ -28,7 +29,6 @@ const item = css({
   display: 'inline-flex',
   alignItems: 'center',
   h: '6',
-  px: '2',
   fontSize: 'xs',
   fontWeight: 'medium',
   color: 'fg.muted',
@@ -38,13 +38,29 @@ const item = css({
   '& svg': { w: '3.5', h: '3.5' },
 })
 
-const itemText = css({ display: 'inline-flex', alignItems: 'center', gap: '1' })
+const itemText = css({ display: 'inline-flex', h: 'full' })
+
+const itemContent = css({ display: 'inline-flex', alignItems: 'center', gap: '1', h: 'full', px: '2' })
 
 interface SegmentedProps<T extends string> {
   value: T
   onChange: (value: T) => void
-  items: { value: T, label: ReactNode, title?: string }[]
+  items: { value: T, label: ReactNode, title?: string, shortcut?: string }[]
   label: string
+}
+
+// The tooltip wraps an inner span because a trigger on the item itself would replace the ids the segment group uses to place its indicator.
+function SegmentItem<T extends string>({ entry }: { entry: SegmentedProps<T>['items'][number] }) {
+  const content = <span className={itemContent}>{entry.label}</span>
+  return (
+    <SegmentGroup.Item value={entry.value} className={item} aria-keyshortcuts={entry.shortcut}>
+      <SegmentGroup.ItemText className={itemText}>
+        {entry.title ? <WithTooltip label={entry.title} shortcut={entry.shortcut}>{content}</WithTooltip> : content}
+      </SegmentGroup.ItemText>
+      <SegmentGroup.ItemControl />
+      <SegmentGroup.ItemHiddenInput />
+    </SegmentGroup.Item>
+  )
 }
 
 export function Segmented<T extends string>({ value, onChange, items, label }: SegmentedProps<T>) {
@@ -57,11 +73,7 @@ export function Segmented<T extends string>({ value, onChange, items, label }: S
     >
       <SegmentGroup.Indicator className={indicator} />
       {items.map(entry => (
-        <SegmentGroup.Item key={entry.value} value={entry.value} className={item} title={entry.title}>
-          <SegmentGroup.ItemText className={itemText}>{entry.label}</SegmentGroup.ItemText>
-          <SegmentGroup.ItemControl />
-          <SegmentGroup.ItemHiddenInput />
-        </SegmentGroup.Item>
+        <SegmentItem key={entry.value} entry={entry} />
       ))}
     </SegmentGroup.Root>
   )

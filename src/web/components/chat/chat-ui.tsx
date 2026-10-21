@@ -1,15 +1,17 @@
 import './openui-setup'
 import type { ComponentRenderer } from '@openuidev/react-lang'
 import type { z } from 'zod/v4'
-import type { calloutProps, checklistProps, fileListProps, followUpsProps, riskTableProps } from '../../../shared/chat-ui'
+import type { calloutProps, checklistProps, fileListProps, followUpsProps, mergeRiskProps, riskTableProps } from '../../../shared/chat-ui'
+import type { RiskLevel } from '../../../shared/merge-risk'
 import type { MrRef } from '../../../shared/types'
 import { Renderer, useIsStreaming } from '@openuidev/react-lang'
-import { CheckCircle2, Circle, FileCode2, MessageSquare } from 'lucide-react'
+import { CheckCircle2, Circle, Eye, FileCode2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { createContext, use } from 'react'
 import { css, cx } from 'styled-system/css'
 import { badge } from 'styled-system/recipes'
 import { createChatUiLibrary } from '../../../shared/chat-ui'
 import { mrReference, summarizeMergeStatus } from '../../../shared/merge-status'
+import { RISK_CATEGORY_LABELS, scoreMergeRisk, sortRiskRows, verdictPoints } from '../../../shared/merge-risk'
 import { useMergeStatus } from '../../hooks/use-merge-request'
 import { useRevealFile } from '../../lib/file-reveal'
 import { useSettings } from '../../lib/settings'
@@ -132,6 +134,76 @@ const MergeStatus: ComponentRenderer<Record<string, never>> = () => {
   )
 }
 
+const VERDICT_BADGE = { 1: badge({ tone: 'success' }), 2: badge({ tone: 'warning' }), 3: badge({ tone: 'danger' }) }
+const VERDICT_ICON = { 1: CheckCircle2, 2: Eye, 3: TriangleAlert }
+const RISK_COLOR: Record<RiskLevel, string> = { low: css({ color: 'success.fg' }), medium: css({ color: 'warning.fg' }), high: css({ color: 'danger.fg' }) }
+const RISK_FILL: Record<RiskLevel, string> = { low: css({ bg: 'success.fg' }), medium: css({ bg: 'warning.fg' }), high: css({ bg: 'danger.fg' }) }
+const RISK_STEPS: RiskLevel[] = ['low', 'medium', 'high']
+
+function RiskMeter({ level }: { level: RiskLevel | null }) {
+  const filled = level ? RISK_STEPS.indexOf(level) + 1 : 0
+  return (
+    <div className={css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '3', flexWrap: 'wrap' })}>
+      <div>
+        <span className={cardTitle}>Merge risk</span>
+        <p className={cx(css({ fontSize: '2xl', fontWeight: 'bold', lineHeight: '1.1', fontFamily: 'mono' }), level ? RISK_COLOR[level] : css({ color: 'fg.subtle' }))}>
+          {level ?? '…'}
+        </p>
+      </div>
+      <div aria-hidden className={css({ display: 'flex', flexDir: 'column', gap: '1', w: '36' })}>
+        <div className={css({ display: 'flex', gap: '1' })}>
+          {RISK_STEPS.map((step, index) => (
+            <span key={step} className={cx(css({ flex: '1', h: '1.5', borderRadius: 'full', bg: 'bg.emphasized' }), level && index < filled && RISK_FILL[level])} />
+          ))}
+        </div>
+        <div className={css({ display: 'flex', justifyContent: 'space-between', fontSize: '2xs', color: 'fg.subtle' })}>
+          <span>low</span>
+          <span>med</span>
+          <span>high</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const MergeRisk: ComponentRenderer<z.infer<typeof mergeRiskProps>> = ({ props }) => {
+  const streaming = useIsStreaming()
+  const rows = sortRiskRows((props.rows ?? []).filter(row => row?.category && row.verdict))
+  return (
+    <div className={card}>
+      <RiskMeter level={streaming ? null : scoreMergeRisk(rows)} />
+      <ul className={css({ display: 'flex', flexDir: 'column', borderTopWidth: '1px', borderColor: 'border.default' })}>
+        {rows.map((row) => {
+          const points = verdictPoints(row.verdict)
+          const Icon = VERDICT_ICON[points]
+          return (
+            <li key={row.category} className={css({ display: 'flex', flexDir: 'column', gap: '1', py: '2.5', borderBottomWidth: '1px', borderColor: 'border.subtle', _last: { borderBottomWidth: '0', pb: '0' } })}>
+              <span className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '2' })}>
+                <span className={css({ fontSize: 'sm', fontWeight: 'semibold' })}>{RISK_CATEGORY_LABELS[row.category]}</span>
+                <span className={VERDICT_BADGE[points]}>
+                  <Icon className={css({ w: '3', h: '3' })} />
+                  {row.verdict}
+                </span>
+              </span>
+              {row.note && <p className={css({ fontSize: 'xs', color: 'fg.muted' })}>{row.note}</p>}
+              {(row.gaps ?? []).length > 0 && (
+                <ul className={css({ display: 'flex', flexDir: 'column', gap: '1.5', mt: '0.5', borderLeftWidth: '2px', borderColor: 'border.default' })}>
+                  {row.gaps.map((gap, index) => (
+                    <li key={index} className={css({ display: 'flex', flexDir: 'column', gap: '0.5', pl: '2.5', fontSize: 'xs' })}>
+                      <span>{gap.text}</span>
+                      {gap.path && <FileLink path={gap.path} line={gap.line} />}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 const FollowUps: ComponentRenderer<z.infer<typeof followUpsProps>> = ({ props }) => {
   const actions = use(ChatUiContext)!
   const streaming = useIsStreaming()
@@ -153,8 +225,15 @@ const FollowUps: ComponentRenderer<z.infer<typeof followUpsProps>> = ({ props })
   )
 }
 
-const chatUiLibrary = createChatUiLibrary<ComponentRenderer<any>>({ Stack, Callout, RiskTable, FileList, Checklist, MergeStatus, FollowUps })
+const chatUiLibrary = createChatUiLibrary<ComponentRenderer<any>>({ Stack, Callout, RiskTable, FileList, Checklist, MergeStatus, MergeRisk, FollowUps })
+
+// Cards render inside the chat's Markdown styles, whose list indent would push every card list to the right.
+const cardReset = css({ '& ul, & ol': { pl: '0!', listStyle: 'none!' } })
 
 export function OpenUiBlock({ code, streaming }: { code: string, streaming: boolean }) {
-  return <Renderer response={code} library={chatUiLibrary} isStreaming={streaming} />
+  return (
+    <div className={cardReset}>
+      <Renderer response={code} library={chatUiLibrary} isStreaming={streaming} />
+    </div>
+  )
 }

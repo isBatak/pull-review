@@ -77,7 +77,7 @@ export interface ChatPromptView {
 }
 
 export const CHAT_MODELS = [
-  { id: '', label: 'Default model' },
+  { id: '', label: 'Default' },
   { id: 'fable', label: 'Fable' },
   { id: 'opus', label: 'Opus' },
   { id: 'sonnet', label: 'Sonnet' },
@@ -108,6 +108,7 @@ export interface ChatSendInput {
   repoPath: string | null
   model: string
   effort: string
+  mergeStatus: boolean
 }
 
 export const EMPTY_CHAT_STATE: ChatState = { version: 0, messages: [], running: false, workspace: { kind: 'diff-only' } }

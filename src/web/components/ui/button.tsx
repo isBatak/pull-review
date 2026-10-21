@@ -30,16 +30,37 @@ const tooltipContent = css.raw({
   '& strong': { fontWeight: 'semibold', color: 'tooltip.fg' },
 })
 
+// Zag rotates the tip so its top-left corner always points at the trigger, so the border stays on these two sides for every placement.
 const tooltipArrowTip = css({
   borderColor: 'tooltip.border',
   borderTopWidth: '1px',
   borderLeftWidth: '1px',
-  '[data-placement^=top] &': { borderTopWidth: '0', borderLeftWidth: '0', borderBottomWidth: '1px', borderRightWidth: '1px' },
-  '[data-placement^=left] &': { borderLeftWidth: '0', borderBottomWidth: '1px', borderRightWidth: '1px' },
-  '[data-placement^=right] &': { borderTopWidth: '0', borderLeftWidth: '1px', borderBottomWidth: '1px' },
 })
 
-export function WithTooltip({ label, children, contentStyle }: { label: ReactNode, children: ReactNode, contentStyle?: SystemStyleObject }) {
+const shortcutKey = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minW: '4.5',
+  h: '4.5',
+  px: '1',
+  fontFamily: 'mono',
+  fontSize: '2xs',
+  color: 'tooltip.fg',
+  opacity: 0.7,
+  borderWidth: '1px',
+  borderColor: 'tooltip.border',
+  borderRadius: 'sm',
+})
+
+interface WithTooltipProps {
+  label: ReactNode
+  shortcut?: string
+  children: ReactNode
+  contentStyle?: SystemStyleObject
+}
+
+export function WithTooltip({ label, shortcut, children, contentStyle }: WithTooltipProps) {
   return (
     <Tooltip.Root openDelay={300} closeDelay={0} positioning={{ placement: 'bottom' }}>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
@@ -49,7 +70,14 @@ export function WithTooltip({ label, children, contentStyle }: { label: ReactNod
             <Tooltip.Arrow>
               <Tooltip.ArrowTip className={tooltipArrowTip} />
             </Tooltip.Arrow>
-            {label}
+            {shortcut
+              ? (
+                  <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '2' })}>
+                    {label}
+                    <kbd className={shortcutKey}>{shortcut}</kbd>
+                  </span>
+                )
+              : label}
           </Tooltip.Content>
         </Tooltip.Positioner>
       </Portal>
@@ -57,12 +85,12 @@ export function WithTooltip({ label, children, contentStyle }: { label: ReactNod
   )
 }
 
-type IconButtonProps = Omit<ButtonProps, 'iconOnly' | 'aria-label'> & { label: string }
+type IconButtonProps = Omit<ButtonProps, 'iconOnly' | 'aria-label'> & { label: string, shortcut?: string }
 
-export function IconButton({ label, variant = 'ghost', ...props }: IconButtonProps) {
+export function IconButton({ label, shortcut, variant = 'ghost', ...props }: IconButtonProps) {
   return (
-    <WithTooltip label={label}>
-      <Button aria-label={label} variant={variant} iconOnly {...props} />
+    <WithTooltip label={label} shortcut={shortcut}>
+      <Button aria-label={label} aria-keyshortcuts={shortcut} variant={variant} iconOnly {...props} />
     </WithTooltip>
   )
 }

@@ -1,7 +1,7 @@
 import type { ChatCodeContext, ChatMessage, ChatToolUse, ChatWorkspace } from '../../../shared/chat'
 import type { PromptViewerRequest } from './prompt-viewer'
 import type { MrRef } from '../../../shared/types'
-import { ArrowUp, Check, ClipboardCopy, Eye, FileCode2, FolderGit2, GitPullRequestArrow, Loader2, MessageSquare, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ClipboardCopy, FileCode2, FolderGit2, GitPullRequestArrow, Loader2, MessageSquare, MessageSquarePlus, RotateCcw, ScanSearch, Square, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -32,12 +32,14 @@ import { Select } from '../ui/select'
 import { parsePatch, PatchView } from './patch-view'
 import { PromptViewer } from './prompt-viewer'
 import { MergeStatusBar } from './merge-status-bar'
+import { ChatCommandsMenu } from './chat-commands-menu'
+import { expandCommand } from '../../../shared/chat-commands'
 import { ChatUiContext, OpenUiBlock } from './chat-ui'
 import { CHAT_UI_LANGUAGE } from '../../../shared/chat-ui'
 import { stepsFromTools } from '../../../shared/thinking-steps'
 import { ThinkingTimeline } from '../thinking-timeline'
 import { ClaudeReviewPanel } from '../claude-review-panel'
-import { UnderlineTabs } from '../ui/underline-tabs'
+import { FolderTabs, folderBar } from '../ui/folder-tabs'
 import { useClaudeReviewControls } from '../../lib/claude-review'
 import { useStoredState } from '../../lib/stored-state'
 
@@ -478,11 +480,12 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   const { state, apply } = useChatSession(mrRef, true)
   const localRepo = useLocalRepo(mrRef)
   const [settings, updateSettings] = useSettings()
-  const modelChoice = { model: settings.chatModel, effort: settings.chatEffort }
+  const modelChoice = { model: settings.chatModel, effort: settings.chatEffort, mergeStatus: settings.liveMergeStatus }
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [viewer, setViewer] = useState<PromptViewerRequest | null>(null)
   const [sending, setSending] = useState(false)
+  const [commandsOpen, setCommandsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stickToBottom = useRef(true)
@@ -519,9 +522,10 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
     }
   }
 
-  async function send(text: string) {
-    if (!sending && RESET_COMMANDS.has(text.trim().toLowerCase()))
+  async function send(typed: string) {
+    if (!sending && RESET_COMMANDS.has(typed.trim().toLowerCase()))
       return resetConversation()
+    const text = expandCommand(typed, { mergeStatus: settings.liveMergeStatus }) ?? typed
     if (!text.trim() || sending || state.running)
       return
     setSending(true)
@@ -544,14 +548,14 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
 
   return (
     <aside aria-label="Claude" className={css({ display: 'flex', flexDir: 'column', h: 'full', minH: '0', bg: 'bg.surface' })}>
-      <div className={css({ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2', h: '10', pl: '3', pr: '1.5', borderBottomWidth: '1px', borderColor: 'border.default' })}>
-        <Sparkles className={css({ w: '4', h: '4', color: 'accent.fg', flexShrink: 0 })} />
-        <UnderlineTabs
+      <div className={cx(folderBar, css({ flexShrink: 0, gap: '2', h: '10', pl: '2', pr: '1.5', bg: 'bg.canvas' }))}>
+        <FolderTabs
           label="Claude"
           size="sm"
+          opensInto="subtle"
           value={tab}
           onChange={setTab}
-          className={css({ flex: '1', alignSelf: 'stretch', alignItems: 'center' })}
+          className={css({ flex: '1' })}
           tabs={[
             { value: 'chat', label: 'Chat' },
             ...(claudeReview
@@ -564,14 +568,16 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
               : []),
           ]}
         />
-        {tab === 'chat' && (
-          <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void resetConversation()}>
-            <RotateCcw />
+        <span className={css({ display: 'flex', alignItems: 'center', gap: '1', alignSelf: 'center' })}>
+          {tab === 'chat' && (
+            <IconButton size="xs" label="New conversation" disabled={!state.messages.length} onClick={() => void resetConversation()}>
+              <RotateCcw />
+            </IconButton>
+          )}
+          <IconButton size="xs" label="Close chat" onClick={() => controls.setOpen(false)}>
+            <X />
           </IconButton>
-        )}
-        <IconButton size="xs" label="Close chat" onClick={() => controls.setOpen(false)}>
-          <X />
-        </IconButton>
+        </span>
       </div>
 
       <WorkspaceBar mrRef={mrRef} workspace={state.workspace} repoPath={localRepo.path} onRepoPathChange={localRepo.setPath} />
@@ -636,37 +642,49 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
                 rows={3}
                 onChange={event => setDraft(event.target.value)}
                 onKeyDown={(event) => {
+                  if (event.key === '/' && !draft && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    setCommandsOpen(true)
+                    return
+                  }
                   if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault()
                     void send(draft)
                   }
                 }}
-                placeholder="Ask about the code. Enter sends, Shift+Enter adds a line."
+                placeholder="Ask about the code, or type / for common prompts. Enter sends, Shift+Enter adds a line."
                 aria-label="Message to Claude"
                 className={css({ w: 'full', resize: 'none', bg: 'transparent', outline: 'none', fontSize: 'sm', color: 'fg.default', _placeholder: { color: 'fg.subtle' } })}
               />
               <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
-                <Select variant="ghost" label="Model" value={settings.chatModel} options={MODEL_OPTIONS} onChange={chatModel => updateSettings({ chatModel })} />
+                <ChatCommandsMenu
+                  open={commandsOpen}
+                  onOpenChange={setCommandsOpen}
+                  mergeStatus={settings.liveMergeStatus}
+                  disabled={busy || sending}
+                  onSend={prompt => void send(prompt)}
+                  onNewConversation={() => void resetConversation()}
+                />
+                <Select variant="subtle" label="Model" value={settings.chatModel} options={MODEL_OPTIONS} onChange={chatModel => updateSettings({ chatModel })} />
                 <span className={css({ display: 'inline-flex', px: '1.5' })}>
                   <EffortSlider label="Effort" value={settings.chatEffort} onChange={chatEffort => updateSettings({ chatEffort })} />
                 </span>
                 <span className={css({ flex: '1' })} />
-                <Button
+                <IconButton
                   size="xs"
-                  variant="ghost"
+                  label="Inspect: see exactly what Claude gets if you send now, without sending"
                   disabled={!draft.trim() && !attached.length}
                   onClick={() => {
                     const input = { text: draft, contexts: attached, repoPath: localRepo.path, ...modelChoice }
                     setViewer({
-                      title: 'Prompt preview',
+                      title: 'Inspect',
                       description: 'What Claude will get if you send now: your message, the instructions, and the files it can read.',
                       load: () => api.chatPreview(mrRef, input),
                     })
                   }}
                 >
-                  <Eye />
-                  Preview
-                </Button>
+                  <ScanSearch />
+                </IconButton>
                 {busy
                   ? (
                       <Button size="xs" onClick={() => void api.chatStop(mrRef).then(apply)}>
@@ -675,10 +693,9 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
                       </Button>
                     )
                   : (
-                      <Button size="xs" variant="solid" type="submit" disabled={!draft.trim() || sending} className={css({ px: '2' })}>
+                      <IconButton size="xs" variant="solid" type="submit" label="Send" disabled={!draft.trim() || sending} className={css({ w: '6', h: '6', px: '0', borderRadius: 'full' })}>
                         <ArrowUp />
-                        Send
-                      </Button>
+                      </IconButton>
                     )}
               </div>
             </form>

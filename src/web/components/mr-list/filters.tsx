@@ -4,7 +4,7 @@ import type { Team } from '../../lib/settings'
 import { Eye, Plus, User as UserIcon, Users } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { appTagStyle, teamStyle } from '../../lib/mr-display'
-import { UnderlineTabs } from '../ui/underline-tabs'
+import { FolderTabs, folderBar } from '../ui/folder-tabs'
 import { hueChip } from './title-parts'
 
 const STATES: { value: MrListState, label: string }[] = [
@@ -16,13 +16,15 @@ const STATES: { value: MrListState, label: string }[] = [
 
 export function StateTabs({ value, onChange, counts }: { value: MrListState, onChange: (state: MrListState) => void, counts: Partial<Record<MrListState, number | null>> }) {
   return (
-    <UnderlineTabs
-      label="Merge request state"
-      value={value}
-      onChange={onChange}
-      tabs={STATES.map(state => ({ ...state, count: counts[state.value] }))}
-      className={css({ borderBottomWidth: '1px', borderColor: 'border.default' })}
-    />
+    <div className={folderBar}>
+      <FolderTabs
+        label="Merge request state"
+        opensInto="canvas"
+        value={value}
+        onChange={onChange}
+        tabs={STATES.map(state => ({ ...state, count: counts[state.value] }))}
+      />
+    </div>
   )
 }
 

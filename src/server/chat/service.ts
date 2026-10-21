@@ -101,10 +101,13 @@ export interface ChatService {
   dispose: () => Promise<void>
 }
 
-const chatUiPrompt = buildChatUiPrompt()
+const chatUiPrompts = {
+  withMergeStatus: buildChatUiPrompt({ mergeStatus: true }),
+  withoutMergeStatus: buildChatUiPrompt({ mergeStatus: false }),
+}
 
-function chatSystemPrompt(base: string) {
-  return `${base}\n\n${chatUiPrompt}`
+function chatSystemPrompt(base: string, input: ChatSendInput) {
+  return `${base}\n\n${input.mergeStatus ? chatUiPrompts.withMergeStatus : chatUiPrompts.withoutMergeStatus}`
 }
 
 function createId() {
@@ -425,7 +428,7 @@ export function createChatService(host: LocalHost): ChatService {
       const update = contextUpdate(session, files)
       session.seenContext = update.seen
       const message = withUpdateNote(update.note, buildPrompt(input.text, input.contexts))
-      const systemPrompt = chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }))
+      const systemPrompt = chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }), input)
       const mcpConfig = await writeCommentTool(contextDir, mr.files)
       await host.writeFile(promptFile, message)
       rememberSent(session.sent, question.id, { message, systemPrompt, files: [...files.filter(file => !file.name.startsWith('diffs/')).map(file => file.path), `${contextDir}/diffs/ (one diff per changed file)`, ...(worktreeDir ? [worktreeDir] : [])] })
@@ -561,7 +564,7 @@ export function createChatService(host: LocalHost): ChatService {
       const fileDiffs = files.filter(file => file.name.startsWith('diffs/'))
       const prompt = {
         message: withUpdateNote(contextUpdate(session, files).note, buildPrompt(input.text, input.contexts)),
-        systemPrompt: chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir })),
+        systemPrompt: chatSystemPrompt(buildSystemPrompt({ mergeRequest: mr.mergeRequest, contextDir, worktreeDir }), input),
         files: [],
       }
       const fileDiffList: ChatPromptSection = {

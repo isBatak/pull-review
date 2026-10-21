@@ -288,3 +288,28 @@ export function compareCompanionPaths(a: string, b: string): number {
   const [baseB, rankB] = companionSortKey(b)
   return baseA.localeCompare(baseB) || rankA - rankB || a.localeCompare(b)
 }
+
+export interface GroupDiffStat {
+  key: string
+  label: string
+  additions: number
+  deletions: number
+}
+
+export function diffStatsByGroup(groups: Pick<FileGroup, 'key' | 'label' | 'files'>[]): { groups: GroupDiffStat[], total: { additions: number, deletions: number } } {
+  const rows = groups
+    .map(group => ({
+      key: group.key,
+      label: group.label,
+      additions: group.files.reduce((sum, file) => sum + file.additions, 0),
+      deletions: group.files.reduce((sum, file) => sum + file.deletions, 0),
+    }))
+    .filter(row => row.additions > 0 || row.deletions > 0)
+  return {
+    groups: rows,
+    total: {
+      additions: rows.reduce((sum, row) => sum + row.additions, 0),
+      deletions: rows.reduce((sum, row) => sum + row.deletions, 0),
+    },
+  }
+}
