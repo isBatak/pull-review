@@ -19,6 +19,7 @@ import type {
 import type { MergeMethod } from '../shared/conflicts'
 import { trimAnalyzerNodes } from '../shared/bundle'
 import { countChanges, sideForPosition } from '../shared/line-map'
+import { withMentionedReviewers } from '../shared/mentions'
 
 export class GitlabError extends Error {
   constructor(public status: number, message: string) {
@@ -290,6 +291,28 @@ export function createRequester(host: string, token: string) {
   return { request, json, paginate, graphql }
 }
 
+const MEMBERS_TTL_MS = 10 * 60_000
+const memberCache = new Map<string, { at: number, members: Promise<User[]> }>()
+
+export function projectMembers(host: string, project: string, token: string): Promise<User[]> {
+  const key = `${host}/${project}`
+  const cached = memberCache.get(key)
+  if (cached && Date.now() - cached.at < MEMBERS_TTL_MS)
+    return cached.members
+  const { paginate } = createRequester(host, token)
+  const members = paginate<RawUser & { state?: string }>(`/projects/${encodeURIComponent(project)}/members/all`).then((raw) => {
+    const unique = new Map<number, User>()
+    for (const member of raw) {
+      if (member.state === undefined || member.state === 'active')
+        unique.set(member.id, normalizeUser(member))
+    }
+    return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name))
+  })
+  memberCache.set(key, { at: Date.now(), members })
+  members.catch(() => memberCache.delete(key))
+  return members
+}
+
 export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
   const mrPath = `/projects/${encodeURIComponent(ref.project)}/merge_requests/${ref.iid}`
 
@@ -330,6 +353,7 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
       }>(mrPath)
       if (!raw.diff_refs)
         throw new GitlabError(409, 'This merge request has no diff yet.')
+      const members = await projectMembers(ref.host, ref.project, token).catch(() => [])
       return {
         ref,
         title: raw.title,
@@ -348,7 +372,7 @@ export function createGitlabClient(ref: MrRef, token: string): GitlabClient {
           startSha: raw.diff_refs.start_sha,
         },
         labels: raw.labels,
-        reviewers: (raw.reviewers ?? []).map(normalizeUser),
+        reviewers: withMentionedReviewers((raw.reviewers ?? []).map(normalizeUser), normalizeUser(raw.author), raw.description, members),
       }
     },
 

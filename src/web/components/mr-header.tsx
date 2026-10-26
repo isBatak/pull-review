@@ -1,5 +1,5 @@
 import type { FileGroup } from '../../shared/grouping'
-import type { DiffFile } from '../../shared/types'
+import type { DiffFile, User } from '../../shared/types'
 import { ArrowLeft, Check, Layers } from 'lucide-react'
 import { Link } from 'react-router'
 import { css, cx } from 'styled-system/css'
@@ -57,6 +57,66 @@ function DiffStatBreakdown({ groups }: { groups: FileGroup[] }) {
   )
 }
 
+const MAX_REVIEWER_AVATARS = 5
+
+function ReviewerStack({ reviewers, approvedBy }: { reviewers: User[], approvedBy: User[] }) {
+  const approvedIds = new Set(approvedBy.map(user => user.id))
+  const reviewerIds = new Set(reviewers.map(user => user.id))
+  const people = [...reviewers, ...approvedBy.filter(user => !reviewerIds.has(user.id))]
+  if (!people.length)
+    return null
+
+  const shown = people.slice(0, MAX_REVIEWER_AVATARS)
+  const hidden = people.length - shown.length
+  const approvedCount = people.filter(user => approvedIds.has(user.id)).length
+  const list = (
+    <span className={css({ display: 'flex', flexDir: 'column', gap: '1.5', py: '1', fontSize: 'sm' })}>
+      {people.map(user => (
+        <span key={user.id} className={css({ display: 'flex', alignItems: 'center', gap: '2' })}>
+          <Avatar user={user} size={18} />
+          <span className={css({ flex: '1' })}>{user.name}</span>
+          {approvedIds.has(user.id)
+            ? <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', color: 'success.fg', '& svg': { w: '3.5', h: '3.5' } })}><Check />Approved</span>
+            : <span className={css({ color: 'fg.muted' })}>Not yet</span>}
+        </span>
+      ))}
+    </span>
+  )
+
+  return (
+    <WithTooltip label={list} contentStyle={{ maxW: 'none', px: '3', py: '2' }}>
+      <span
+        tabIndex={0}
+        aria-label={`${people.length} reviewers, ${approvedCount} approved. Focus to see who.`}
+        className={css({ display: 'inline-flex', alignItems: 'center', cursor: 'default', outline: 'none', borderRadius: 'full', _focusVisible: { boxShadow: '0 0 0 2px var(--colors-accent-default)' } })}
+      >
+        {shown.map((user, index) => {
+          const approved = approvedIds.has(user.id)
+          return (
+            <span
+              key={user.id}
+              style={{ zIndex: shown.length - index }}
+              className={css({ position: 'relative', display: 'inline-flex', ml: '-1', borderRadius: 'full', borderWidth: '2px', borderColor: 'bg.surface', _first: { ml: '0' } })}
+            >
+              <span className={css({ display: 'inline-flex', borderRadius: 'full', boxShadow: approved ? '0 0 0 2px var(--colors-success-solid)' : 'none', opacity: approved ? 1 : 0.7 })}>
+                <Avatar user={user} size={22} />
+              </span>
+              {approved && (
+                <span aria-hidden className={css({ position: 'absolute', right: '-1', bottom: '-1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', w: '3', h: '3', borderRadius: 'full', bg: 'success.solid', color: 'white', boxShadow: '0 0 0 1.5px var(--colors-bg-surface)', '& svg': { w: '2', h: '2', strokeWidth: '4' } })}>
+                  <Check />
+                </span>
+              )}
+            </span>
+          )
+        })}
+        {hidden > 0 && (
+          <span className={css({ ml: '1', fontSize: 'xs', color: 'fg.muted', fontVariantNumeric: 'tabular-nums' })}>{`+${hidden}`}</span>
+        )}
+      </span>
+    </WithTooltip>
+  )
+}
+
 function ApproveButton() {
   const { mergeRequest } = useReview()
   const approvals = useApprovals(mergeRequest.ref)
@@ -73,17 +133,7 @@ function ApproveButton() {
 
   return (
     <div className={css({ display: 'flex', alignItems: 'center', gap: '2' })}>
-      {data.approvedBy.length > 0 && (
-        <WithTooltip label={`Approved by ${data.approvedBy.map(user => user.name).join(', ')}`}>
-          <span className={css({ display: 'inline-flex', alignItems: 'center' })}>
-            {data.approvedBy.slice(0, 4).map(user => (
-              <span key={user.id} className={css({ ml: '-1', borderRadius: 'full', borderWidth: '2px', borderColor: 'bg.surface', _first: { ml: '0' } })}>
-                <Avatar user={user} size={20} />
-              </span>
-            ))}
-          </span>
-        </WithTooltip>
-      )}
+      <ReviewerStack reviewers={mergeRequest.reviewers} approvedBy={data.approvedBy} />
       <WithTooltip label={error ? error.message : summary}>
         {data.userHasApproved
           ? (

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.16 (2026-10-26)
+
+- People tagged in a merge request's description, such as `@miso.kovac`, now count as reviewers next to the assigned one. Free GitLab allows only one reviewer, so teams often tag the rest. These merge requests show under Needs my review, match `reviewer:@me`, and show the tagged people's avatars.
+- The merge request header shows all reviewers next to Approve. People who approved get a green ring and a check. Hover the avatars to see who approved and who has not yet.
+
 ## 0.2.15 (2026-10-21)
 
 - Review buttons moved from the header into a floating toolbar at the bottom of the code. Each has a keyboard shortcut, shown when you hover it: `S`, `U`, `W`, `T`, `R`, `G`, `C` and `,`.

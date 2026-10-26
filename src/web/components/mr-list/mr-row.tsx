@@ -189,7 +189,7 @@ function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInS
           <WithTooltip label={`Reviewers: ${mr.reviewers.map(reviewer => reviewer.name).join(', ')}`}>
             <span className={css({ position: 'relative', zIndex: 1, display: 'inline-flex' })}>
               {mr.reviewers.slice(0, 3).map(reviewer => (
-                <span key={reviewer.id} className={css({ ml: '-1.5', borderRadius: 'full', borderWidth: '2px', borderColor: 'bg.surface', _first: { ml: '0' } })}>
+                <span key={reviewer.id} className={css({ display: 'inline-flex', ml: '-1.5', borderRadius: 'full', borderWidth: '2px', borderColor: 'bg.surface', _first: { ml: '0' } })}>
                   <Avatar user={reviewer} size={20} />
                 </span>
               ))}

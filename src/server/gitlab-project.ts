@@ -1,6 +1,7 @@
 import type { MrApproval, MrCounts, MrListResponse, MrListState, MrState, MrSummary, ProjectInfo, ProjectRef, User } from '../shared/types'
 import type { RawUser } from './gitlab'
-import { createRequester, normalizeUser } from './gitlab'
+import { withMentionedReviewers } from '../shared/mentions'
+import { createRequester, normalizeUser, projectMembers } from './gitlab'
 
 const PAGE_SIZE = 100
 const MAX_PARALLEL_REQUESTS = 8
@@ -8,6 +9,7 @@ const MAX_PARALLEL_REQUESTS = 8
 interface RawMrSummary {
   iid: number
   title: string
+  description: string | null
   draft: boolean
   state: MrState
   web_url: string
@@ -78,15 +80,16 @@ export interface MrListQuery {
   search?: string
 }
 
-function normalizeMrSummary(raw: RawMrSummary): MrSummary {
+function normalizeMrSummary(raw: RawMrSummary, members: User[]): MrSummary {
+  const author = normalizeUser(raw.author)
   return {
     iid: raw.iid,
     title: raw.title,
     draft: raw.draft,
     state: raw.state,
     webUrl: raw.web_url,
-    author: normalizeUser(raw.author),
-    reviewers: (raw.reviewers ?? []).map(normalizeUser),
+    author,
+    reviewers: withMentionedReviewers((raw.reviewers ?? []).map(normalizeUser), author, raw.description, members),
     sourceBranch: raw.source_branch,
     targetBranch: raw.target_branch,
     createdAt: raw.created_at,
@@ -114,14 +117,18 @@ async function mapLimited<T, R>(items: T[], run: (item: T) => Promise<R>): Promi
 }
 
 export function createGitlabProjectClient(ref: ProjectRef, token: string) {
-  const { request, json, paginate, graphql } = createRequester(ref.host, token)
+  const { request, json, graphql } = createRequester(ref.host, token)
   const projectPath = `/projects/${encodeURIComponent(ref.project)}`
 
   function mrQuery(state: MrListState, extra: Record<string, string>) {
     return new URLSearchParams({ state, order_by: 'updated_at', sort: 'desc', ...extra })
   }
 
-  async function listForAuthor(query: MrListQuery, authorId: number | null) {
+  function members() {
+    return projectMembers(ref.host, ref.project, token)
+  }
+
+  async function listPages(query: MrListQuery, filters: Record<string, string>, members: User[]) {
     const items: MrSummary[] = []
     const pages = Math.ceil(query.limit / PAGE_SIZE)
     let hasMore = false
@@ -129,17 +136,42 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
       const params = mrQuery(query.state, {
         per_page: String(Math.min(PAGE_SIZE, query.limit)),
         page: String(page),
-        ...(authorId !== null ? { author_id: String(authorId) } : {}),
-        ...(query.reviewerId ? { reviewer_id: String(query.reviewerId) } : {}),
-        ...(query.search ? { search: query.search, in: 'title' } : {}),
+        ...filters,
       })
       const response = await request(`${projectPath}/merge_requests?${params}`)
-      items.push(...(await response.json() as RawMrSummary[]).map(normalizeMrSummary))
+      items.push(...(await response.json() as RawMrSummary[]).map(raw => normalizeMrSummary(raw, members)))
       hasMore = Boolean(response.headers.get('x-next-page'))
       if (!hasMore)
         break
     }
     return { items, hasMore }
+  }
+
+  function titleFilter(query: MrListQuery): Record<string, string> {
+    return query.search ? { search: query.search, in: 'title' } : {}
+  }
+
+  function listForAuthor(query: MrListQuery, authorId: number | null, members: User[]) {
+    return listPages(query, {
+      ...(authorId !== null ? { author_id: String(authorId) } : {}),
+      ...titleFilter(query),
+    }, members)
+  }
+
+  async function listForReviewer(query: MrListQuery, reviewerId: number, members: User[]) {
+    const reviewer = members.find(member => member.id === reviewerId)
+    const [assigned, tagged] = await Promise.all([
+      listPages(query, { reviewer_id: String(reviewerId), ...titleFilter(query) }, members),
+      reviewer
+        ? listPages(query, { search: `@${reviewer.username}`, in: 'description' }, members)
+        : { items: [], hasMore: false },
+    ])
+    const titleSearch = query.search?.toLowerCase()
+    const taggedItems = tagged.items.filter(mr =>
+      mr.reviewers.some(user => user.id === reviewerId)
+      && (!titleSearch || mr.title.toLowerCase().includes(titleSearch)))
+    const byIid = new Map([...assigned.items, ...taggedItems].map(mr => [mr.iid, mr]))
+    return { items: [...byIid.values()], hasMore: assigned.hasMore || tagged.hasMore }
   }
 
   async function countFor(state: MrListState, authorId: number | null): Promise<number | null> {
@@ -176,27 +208,19 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
       }
     },
 
-    async members(): Promise<User[]> {
-      const raw = await paginate<RawUser & { state?: string }>(`${projectPath}/members/all`)
-      const unique = new Map<number, User>()
-      for (const member of raw) {
-        if (member.state === undefined || member.state === 'active')
-          unique.set(member.id, normalizeUser(member))
-      }
-      return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name))
-    },
+    members,
 
     async mergeRequests(query: MrListQuery): Promise<MrListResponse> {
-      if (!query.authorIds?.length)
-        return listForAuthor(query, null).then(({ items, hasMore }) => ({ items: items.slice(0, query.limit), hasMore: hasMore || items.length > query.limit }))
-
-      const perAuthor = await mapLimited(query.authorIds, authorId => listForAuthor(query, authorId))
-      const merged = perAuthor
+      const known = await members().catch(() => [])
+      const lists = query.reviewerId
+        ? [await listForReviewer(query, query.reviewerId, known)]
+        : await mapLimited(query.authorIds?.length ? query.authorIds : [null], authorId => listForAuthor(query, authorId, known))
+      const merged = lists
         .flatMap(result => result.items)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       return {
         items: merged.slice(0, query.limit),
-        hasMore: merged.length > query.limit || perAuthor.some(result => result.hasMore),
+        hasMore: merged.length > query.limit || lists.some(result => result.hasMore),
       }
     },
 
@@ -221,7 +245,7 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
         const params = mrQuery(state, { source_branch: branch, per_page: '1' })
         const found = await json<RawMrSummary[]>(`${projectPath}/merge_requests?${params}`)
         if (found[0])
-          return normalizeMrSummary(found[0])
+          return normalizeMrSummary(found[0], await members().catch(() => []))
       }
       return null
     },
