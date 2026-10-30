@@ -10,6 +10,7 @@ import type {
   MrListState,
   ProjectInfo,
   ProjectRef,
+  TagListResponse,
   User,
   DiffRefs,
   Discussion,
@@ -25,6 +26,7 @@ import type { ChatPromptView, ChatSendInput, ChatState } from '../../shared/chat
 import type { FindingStatus, ReviewRunInput, ReviewRunState } from '../../shared/claude-review'
 import type { CommitPlan, CommitPlanInput, CommitResult, PlannedCommit } from '../../shared/commit-plan'
 import type { LocalChanges } from '../../shared/local-changes'
+import type { ConflictSide, HotfixCommit, HotfixInput, HotfixPlan, HotfixProgress, HotfixStepId, PickConflictFile } from '../../shared/hotfix'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
 import type { SymbolHit } from '../../shared/symbols'
 import type { ConflictReport, SyncJob } from '../../shared/conflicts'
@@ -102,6 +104,16 @@ export const api = {
       search: params.search,
     },
   }),
+  projectTags: (ref: ProjectRef, page: number, perPage: number, search?: string) => call<TagListResponse>(ref, '/project/tags', { query: { page: String(page), perPage: String(perPage), search } }),
+  hotfixVersion: (ref: ProjectRef, tag: string) => call<{ version: string }>(ref, '/project/hotfix/version', { query: { tag } }),
+  hotfixCommits: (ref: ProjectRef, page: number) => call<{ items: HotfixCommit[], hasMore: boolean }>(ref, '/project/hotfix/commits', { query: { page: String(page) } }),
+  hotfixPlan: (ref: ProjectRef, repoPath: string, input: HotfixInput) => call<HotfixPlan>(ref, '/project/hotfix/plan', { method: 'POST', body: { repoPath, input } }),
+  runHotfixStep: (ref: ProjectRef, repoPath: string, input: HotfixInput, stepId: HotfixStepId) => call<{ output: string, conflicts: PickConflictFile[] | null }>(ref, '/project/hotfix/run', { method: 'POST', body: { repoPath, input, stepId } }),
+  hotfixConflicts: (ref: ProjectRef, repoPath: string) => call<{ inProgress: boolean, files: PickConflictFile[] }>(ref, '/project/hotfix/conflicts', { query: { repoPath } }),
+  resolveHotfixConflict: (ref: ProjectRef, repoPath: string, path: string, side: ConflictSide) => call<{ ok: true }>(ref, '/project/hotfix/resolve', { method: 'POST', body: { repoPath, path, side } }),
+  continueHotfixPick: (ref: ProjectRef, repoPath: string) => call<{ output: string }>(ref, '/project/hotfix/continue', { method: 'POST', body: { repoPath } }),
+  abortHotfix: (ref: ProjectRef, repoPath: string) => call<{ returnedTo: string | null }>(ref, '/project/hotfix/abort', { method: 'POST', body: { repoPath } }),
+  activeHotfix: (ref: ProjectRef, repoPath: string) => call<{ progress: HotfixProgress | null }>(ref, '/project/hotfix/active', { query: { repoPath } }),
   projectApprovals: (ref: ProjectRef) => call<MrApproval[]>(ref, '/project/approvals'),
   projectCounts: (ref: ProjectRef, authorIds?: number[]) => call<MrCounts>(ref, '/project/counts', { query: { authorIds: authorIds?.join(',') } }),
   config: () => call<AppConfig>(null, '/config'),

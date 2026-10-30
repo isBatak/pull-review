@@ -8,7 +8,7 @@ import { css, cx } from 'styled-system/css'
 import { mrAppPath } from '../../shared/mr-ref'
 import { api } from '../lib/api'
 import { useChatAvailable } from '../lib/chat'
-import { projectKey, useAppConfig } from '../lib/local-repos'
+import { projectKey, useProjectFolder } from '../lib/local-repos'
 import { useSettings } from '../lib/settings'
 import { Button } from './ui/button'
 
@@ -27,14 +27,6 @@ const field = css({
   outline: 'none',
   _focus: { borderColor: 'accent.default' },
 })
-
-function useProjectFolder(project: ProjectRef) {
-  const [settings] = useSettings()
-  const detected = useAppConfig().data?.localRepo
-  if (detected && detected.host === project.host && detected.project.toLowerCase() === project.project.toLowerCase())
-    return detected.path
-  return settings.localRepos[projectKey(project)]?.trim() || null
-}
 
 function CreateForm({ project, status, onCancel }: { project: ProjectRef, status: BranchStatus, onCancel: () => void }) {
   const navigate = useNavigate()

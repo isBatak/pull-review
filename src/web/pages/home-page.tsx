@@ -3,10 +3,11 @@ import type { MrListState, MrSummary, ProjectInfo, User } from '../../shared/typ
 import type { PeopleFilter } from '../components/mr-list/filters'
 import type { QuickFilter } from '../lib/mr-display'
 import type { Team } from '../lib/settings'
-import { FolderGit2, GitPullRequest, Layers, RefreshCw } from 'lucide-react'
+import { FolderGit2, GitPullRequest, Layers, RefreshCw, Rocket } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { css } from 'styled-system/css'
+import { button } from 'styled-system/recipes'
 import { parseMrTitle } from '../../shared/mr-title'
 import { analyzeStacks, groupIntoStacks, isWarning } from '../../shared/stacks'
 import { AppHeader } from '../components/app-header'
@@ -332,6 +333,10 @@ export function HomePage() {
               </p>
             </div>
             <div className={css({ display: 'flex', gap: '2' })}>
+              <Link to="/releases" className={button({ variant: 'outline', size: 'md' })}>
+                <Rocket />
+                Releases
+              </Link>
               <IconButton
                 label="Refresh"
                 variant="outline"

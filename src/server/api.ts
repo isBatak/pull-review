@@ -17,6 +17,9 @@ import { commitLocalChanges, pushLocalCommits, readUnpushedCommit } from './loca
 import { applyPatch } from './local/patch'
 import { inspectConflicts, pushSynced, syncWithTarget, undoSync } from './local/conflicts'
 import { pushBranch, readBranchStatus, readDraftInput } from './local/new-mr'
+import type { ConflictSide, HotfixInput, HotfixStepId } from '../shared/hotfix'
+import { HOTFIX_SOURCE_BRANCH, nextHotfixVersion, parseReleaseTag, rcTagPrefix } from '../shared/hotfix'
+import { createHotfixRunner } from './local/hotfix'
 import type { SyncJob } from '../shared/conflicts'
 import { syncStrategy } from '../shared/conflicts'
 import { mrKey } from '../shared/mr-ref'
@@ -139,6 +142,7 @@ export function createApi(options: ApiOptions) {
     return found
   }
   const mrWorkspaces = host && gitTools && repoLinks && owners ? createMrWorkspaces(host, gitTools, repoLinks, owners) : null
+  const hotfixes = host && gitTools ? createHotfixRunner(host, gitTools) : null
 
   api.post('/local/inspect', async (c) => {
     if (!repoLinks)
@@ -223,6 +227,79 @@ export function createApi(options: ApiOptions) {
   api.get('/project/viewer', async c => c.json(await c.var.projectClient.viewer()))
 
   api.get('/project/members', async c => c.json(await c.var.projectClient.members()))
+
+  api.get('/project/tags', async (c) => {
+    const page = Math.max(1, Number(c.req.query('page')) || 1)
+    const perPage = Math.min(100, Math.max(1, Number(c.req.query('perPage')) || 30))
+    return c.json(await c.var.projectClient.tags(page, perPage, c.req.query('search')?.trim() || undefined))
+  })
+
+  api.get('/project/hotfix/version', async (c) => {
+    const tag = parseReleaseTag(c.req.query('tag') ?? '')
+    if (!tag)
+      return c.json({ error: 'Expected a release tag, such as stable-app-0.193.0' }, 400)
+    const existing = await c.var.projectClient.tagNames(`^${rcTagPrefix(tag)}`)
+    return c.json({ version: nextHotfixVersion(tag, existing) })
+  })
+
+  api.get('/project/hotfix/commits', async (c) => {
+    const page = Math.max(1, Number(c.req.query('page')) || 1)
+    return c.json(await c.var.projectClient.branchCommits(HOTFIX_SOURCE_BRANCH, page, 40))
+  })
+
+  api.get('/project/hotfix/active', async (c) => {
+    const repoPath = c.req.query('repoPath')
+    if (!hotfixes || !repoPath)
+      return c.json({ progress: null })
+    return c.json({ progress: await hotfixes.active(readProjectRef(c)!, repoPath) })
+  })
+
+  api.post('/project/hotfix/plan', async (c) => {
+    if (!hotfixes)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath, input } = await c.req.json<{ repoPath?: string, input?: HotfixInput }>()
+    if (!repoPath || !input)
+      return c.json({ error: 'Expected repoPath and input' }, 400)
+    return c.json(await hotfixes.plan(readProjectRef(c)!, repoPath, input))
+  })
+
+  api.post('/project/hotfix/run', async (c) => {
+    if (!hotfixes)
+      return c.json({ error: 'Local repositories are not available here.' }, 404)
+    const { repoPath, input, stepId } = await c.req.json<{ repoPath?: string, input?: HotfixInput, stepId?: HotfixStepId }>()
+    if (!repoPath || !input || !stepId)
+      return c.json({ error: 'Expected repoPath, input and stepId' }, 400)
+    return c.json(await hotfixes.run(readProjectRef(c)!, repoPath, input, stepId))
+  })
+
+  api.get('/project/hotfix/conflicts', async (c) => {
+    const repoPath = c.req.query('repoPath')
+    if (!hotfixes || !repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    return c.json(await hotfixes.conflicts(readProjectRef(c)!, repoPath))
+  })
+
+  api.post('/project/hotfix/resolve', async (c) => {
+    const { repoPath, path, side } = await c.req.json<{ repoPath?: string, path?: string, side?: ConflictSide }>()
+    if (!hotfixes || !repoPath || !path || !side || !['tag', 'commit', 'edited'].includes(side))
+      return c.json({ error: 'Expected repoPath, path and side' }, 400)
+    await hotfixes.resolve(readProjectRef(c)!, repoPath, path, side)
+    return c.json({ ok: true })
+  })
+
+  api.post('/project/hotfix/continue', async (c) => {
+    const { repoPath } = await c.req.json<{ repoPath?: string }>()
+    if (!hotfixes || !repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    return c.json(await hotfixes.continuePick(readProjectRef(c)!, repoPath))
+  })
+
+  api.post('/project/hotfix/abort', async (c) => {
+    const { repoPath } = await c.req.json<{ repoPath?: string }>()
+    if (!hotfixes || !repoPath)
+      return c.json({ error: 'Expected repoPath' }, 400)
+    return c.json(await hotfixes.abort(readProjectRef(c)!, repoPath))
+  })
 
   api.get('/project/merge-requests', async (c) => {
     const state = c.req.query('state') as MrListState

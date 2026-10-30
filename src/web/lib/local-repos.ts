@@ -1,4 +1,4 @@
-import type { MrRef } from '../../shared/types'
+import type { MrRef, ProjectRef } from '../../shared/types'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { mrKey } from '../../shared/mr-ref'
@@ -11,6 +11,14 @@ export function useAppConfig() {
 
 export function projectKey(ref: Pick<MrRef, 'host' | 'project'>) {
   return `${ref.host}/${ref.project}`
+}
+
+export function useProjectFolder(project: ProjectRef) {
+  const [settings] = useSettings()
+  const detected = useAppConfig().data?.localRepo
+  if (detected && detected.host === project.host && detected.project.toLowerCase() === project.project.toLowerCase())
+    return detected.path
+  return settings.localRepos[projectKey(project)]?.trim() || null
 }
 
 export function mrWorkspaceKey(ref: MrRef) {

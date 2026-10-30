@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.17 (2026-10-28)
+
+- New Releases page, opened from the start page. Pick a tag, choose commits from `develop` and the app makes the hotfix in your local folder, step by step. It helps with conflicts and remembers where you stopped.
+
 ## 0.2.16 (2026-10-26)
 
 - People tagged in a merge request's description, such as `@miso.kovac`, now count as reviewers next to the assigned one. Free GitLab allows only one reviewer, so teams often tag the rest. These merge requests show under Needs my review, match `reviewer:@me`, and show the tagged people's avatars.

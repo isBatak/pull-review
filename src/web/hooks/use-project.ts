@@ -1,6 +1,6 @@
 import type { ProjectRef } from '../../shared/types'
 import type { MrListParams } from '../lib/api'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 
 function projectKey(ref: ProjectRef | null) {
@@ -9,6 +9,20 @@ function projectKey(ref: ProjectRef | null) {
 
 export function useProjectInfo(ref: ProjectRef | null) {
   return useQuery({ queryKey: ['project', projectKey(ref)], queryFn: () => api.projectInfo(ref!), enabled: Boolean(ref), staleTime: 10 * 60_000 })
+}
+
+const TAGS_PER_PAGE = 50
+
+export function useProjectTags(ref: ProjectRef | null, search: string) {
+  return useInfiniteQuery({
+    queryKey: ['tags', projectKey(ref), search],
+    queryFn: ({ pageParam }) => api.projectTags(ref!, pageParam, TAGS_PER_PAGE, search || undefined),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => (last.hasMore ? pages.length + 1 : undefined),
+    enabled: Boolean(ref),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  })
 }
 
 export function useProjectViewer(ref: ProjectRef | null) {

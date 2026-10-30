@@ -1,4 +1,5 @@
-import type { MrApproval, MrCounts, MrListResponse, MrListState, MrState, MrSummary, ProjectInfo, ProjectRef, User } from '../shared/types'
+import type { MrApproval, MrCounts, MrListResponse, MrListState, MrState, MrSummary, ProjectInfo, ProjectRef, TagListResponse, User } from '../shared/types'
+import type { HotfixCommit } from '../shared/hotfix'
 import type { RawUser } from './gitlab'
 import { withMentionedReviewers } from '../shared/mentions'
 import { createRequester, normalizeUser, projectMembers } from './gitlab'
@@ -101,6 +102,21 @@ function normalizeMrSummary(raw: RawMrSummary, members: User[]): MrSummary {
     hasConflicts: raw.has_conflicts,
     labels: raw.labels,
   }
+}
+
+interface RawTag {
+  name: string
+  commit: { short_id: string, title: string, committed_date: string, web_url: string }
+}
+
+interface RawCommit {
+  id: string
+  short_id: string
+  title: string
+  message: string
+  author_name: string
+  authored_date: string
+  web_url: string
 }
 
 async function mapLimited<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R[]> {
@@ -271,6 +287,43 @@ export function createGitlabProjectClient(ref: ProjectRef, token: string) {
         body: JSON.stringify({ source_branch: input.source, target_branch: input.target, title: input.title, description: input.description }),
       })
       return created.iid
+    },
+
+    async tags(page: number, perPage: number, search?: string): Promise<TagListResponse> {
+      const params = new URLSearchParams({ order_by: 'updated', sort: 'desc', page: String(page), per_page: String(perPage), ...(search ? { search } : {}) })
+      const response = await request(`${projectPath}/repository/tags?${params}`)
+      const raw = await response.json() as RawTag[]
+      return {
+        items: raw.map(tag => ({
+          name: tag.name,
+          webUrl: `https://${ref.host}/${ref.project}/-/tags/${encodeURIComponent(tag.name)}`,
+          commit: { shortId: tag.commit.short_id, title: tag.commit.title, committedAt: tag.commit.committed_date, webUrl: tag.commit.web_url },
+        })),
+        hasMore: Boolean(response.headers.get('x-next-page')),
+      }
+    },
+
+    async tagNames(search: string): Promise<string[]> {
+      const params = new URLSearchParams({ search, per_page: '100' })
+      return (await json<{ name: string }[]>(`${projectPath}/repository/tags?${params}`)).map(tag => tag.name)
+    },
+
+    async branchCommits(branch: string, page: number, perPage: number): Promise<{ items: HotfixCommit[], hasMore: boolean }> {
+      const params = new URLSearchParams({ ref_name: branch, first_parent: 'true', page: String(page), per_page: String(perPage) })
+      const response = await request(`${projectPath}/repository/commits?${params}`)
+      const raw = await response.json() as RawCommit[]
+      return {
+        items: raw.map(commit => ({
+          sha: commit.id,
+          shortId: commit.short_id,
+          title: commit.title,
+          description: commit.message.trim().split('\n').slice(1).join('\n').trim(),
+          author: commit.author_name,
+          authoredAt: commit.authored_date,
+          webUrl: commit.web_url,
+        })),
+        hasMore: Boolean(response.headers.get('x-next-page')),
+      }
     },
 
     async counts(authorIds?: number[]): Promise<MrCounts> {

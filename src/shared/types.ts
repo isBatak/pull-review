@@ -201,6 +201,22 @@ export interface MrListResponse {
 
 export type MrCounts = Record<MrListState, number | null>
 
+export interface TagSummary {
+  name: string
+  webUrl: string
+  commit: {
+    shortId: string
+    title: string
+    committedAt: string
+    webUrl: string
+  }
+}
+
+export interface TagListResponse {
+  items: TagSummary[]
+  hasMore: boolean
+}
+
 export interface BundleSettings {
   jobName: string
   analysisPath: string

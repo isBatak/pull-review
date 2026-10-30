@@ -20,6 +20,7 @@ import { BundleTab } from './bundle-tab'
 import { CategoriesTab } from './categories-tab'
 import { EditorSetting } from './editor-setting'
 import { LocalRepos } from './local-repos'
+import { ReleasesTab } from './releases-tab'
 
 const input = css({
   w: 'full',
@@ -59,7 +60,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
   settings: AppSettings
   onChange: (patch: Partial<AppSettings>) => void
-  initialTab?: 'general' | 'teams' | 'categories' | 'bundle' | 'ai' | 'backup'
+  initialTab?: 'general' | 'teams' | 'categories' | 'bundle' | 'releases' | 'ai' | 'backup'
 }
 
 function ZoomSetting() {
@@ -321,6 +322,7 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
                 <Tabs.Trigger value="teams" className={tabTrigger}>Teams</Tabs.Trigger>
                 <Tabs.Trigger value="categories" className={tabTrigger}>Categories</Tabs.Trigger>
                 <Tabs.Trigger value="bundle" className={tabTrigger}>Bundle</Tabs.Trigger>
+                <Tabs.Trigger value="releases" className={tabTrigger}>Releases</Tabs.Trigger>
                 <Tabs.Trigger value="ai" className={tabTrigger}>AI</Tabs.Trigger>
                 <Tabs.Trigger value="backup" className={tabTrigger}>Backup</Tabs.Trigger>
               </Tabs.List>
@@ -328,6 +330,7 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, initial
               <Tabs.Content value="teams" className={tabPanel}><TeamsTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="categories" className={tabPanel}><CategoriesTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="bundle" className={tabPanel}><BundleTab settings={settings} onChange={onChange} /></Tabs.Content>
+              <Tabs.Content value="releases" className={tabPanel}><ReleasesTab /></Tabs.Content>
               <Tabs.Content value="ai" className={tabPanel}><AiTab settings={settings} onChange={onChange} /></Tabs.Content>
               <Tabs.Content value="backup" className={tabPanel}><BackupTab settings={settings} onReplace={onChange} /></Tabs.Content>
             </Tabs.Root>

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter, Route, Routes, useLocation } from 'react-router'
 import { parseMrRef } from '../shared/mr-ref'
 import { HomePage } from './pages/home-page'
+import { ReleasesPage } from './pages/releases-page'
 import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
 import { preloadDiffHighlighter } from './lib/code-tokens'
@@ -44,6 +45,7 @@ createRoot(document.getElementById('root')!).render(
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/releases/:kind?" element={<ReleasesPage />} />
           <Route path="*" element={<MrRoute />} />
         </Routes>
       </Router>
