@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { css } from 'styled-system/css'
 import { mrAppPath, parseMrRef } from '../../shared/mr-ref'
+import { SelfImproveButtons } from '../feedback/self-improve'
 import { useTheme } from '../lib/preferences'
 import { IconButton } from './ui/button'
 import { ProjectAvatar } from './ui/project-avatar'
@@ -131,6 +132,7 @@ export function AppHeader({ project, projectInfo, onOpenSettings }: AppHeaderPro
       </form>
 
       <div className={css({ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1' })}>
+        <SelfImproveButtons />
         <IconButton label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <Sun /> : <Moon />}
         </IconButton>

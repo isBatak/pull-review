@@ -1,6 +1,7 @@
+import type { FeedbackContext } from './self-improve'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import tinyConfig from '../../tinyjs.json'
-import { APP_OVERLAY_ROOT, BOOT_READY_METHOD, createOverlayBoot, overlayPageUrl } from './self-improve'
+import { APP_OVERLAY_ROOT, BOOT_READY_METHOD, contextDetails, createOverlayBoot, elementLabel, elementText, overlayPageUrl, sourceLocation, trimHtml, withoutDetails } from './self-improve'
 
 const SHIPPED = 'file:///Applications/Pull%20Review.app/Contents/Resources/app/frontend/index.html'
 const OVERLAY = 'file:///Users/me/overlay/1.0.0/build/app-web/index.html'
@@ -79,5 +80,44 @@ describe('the overlay boot check', () => {
     boot.onNavigate({ kind: 'finish', url: SHIPPED })
     expect(goTo).toHaveBeenCalledTimes(2)
     expect(boot.state).toBe('loading')
+  })
+})
+
+describe('feedback context', () => {
+  const context: FeedbackContext = {
+    appVersion: '1.0.0',
+    page: { route: '/releases/hotfix', title: 'Releases' },
+    viewport: { width: 1322, height: 900 },
+    theme: 'light',
+    element: { label: 'Feedback', source: 'src/web/a.tsx:3:5', selector: 'nav > a', text: 'Feedback', html: '<a>Feedback</a>', styles: {}, rect: { x: 0, y: 0, width: 10, height: 10 } },
+    screenshot: 'data:image/png;base64,AAAA',
+  }
+
+  it('names an element by its label, its text or its tag', () => {
+    expect(elementLabel({ ariaLabel: ' Open   settings ', text: 'x', tag: 'BUTTON' })).toBe('Open settings')
+    expect(elementLabel({ ariaLabel: null, text: '\n  Feedback\n', tag: 'A' })).toBe('Feedback')
+    expect(elementLabel({ ariaLabel: null, text: '   ', tag: 'DIV' })).toBe('<div>')
+    expect(elementLabel({ ariaLabel: null, text: 'a'.repeat(60), tag: 'P' })).toHaveLength(40)
+  })
+
+  it('keeps element text and markup short', () => {
+    expect(elementText('a'.repeat(300))).toHaveLength(200)
+    expect(trimHtml('<p>hello</p>', 5)).toBe('<p>he<!-- 7 more characters -->')
+    expect(trimHtml('<p>hi</p>')).toBe('<p>hi</p>')
+  })
+
+  it('reads a sourcery location', () => {
+    expect(sourceLocation('src/web/pages/home-page.tsx:309:5')).toEqual({ file: 'src/web/pages/home-page.tsx', line: 309, column: 5 })
+    expect(sourceLocation(null)).toBeNull()
+    expect(sourceLocation('nope')).toBeNull()
+  })
+
+  it('lists the details and drops the ones the user removed', () => {
+    expect(contextDetails(context).map(detail => detail.key)).toEqual(['page', 'viewport', 'theme', 'element', 'screenshot'])
+    expect(contextDetails(context)[1]?.value).toBe('1322 × 900 px')
+    const trimmed = withoutDetails(context, ['screenshot', 'theme'])
+    expect(contextDetails(trimmed).map(detail => detail.key)).toEqual(['page', 'viewport', 'element'])
+    expect(trimmed.appVersion).toBe('1.0.0')
+    expect(context.screenshot).not.toBeNull()
   })
 })

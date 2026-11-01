@@ -28,6 +28,7 @@ import type { CommitPlan, CommitPlanInput, CommitResult, PlannedCommit } from '.
 import type { LocalChanges } from '../../shared/local-changes'
 import type { ConflictSide, HotfixCommit, HotfixInput, HotfixPlan, HotfixProgress, HotfixStepId, PickConflictFile } from '../../shared/hotfix'
 import type { LocalCheckout, LocalFolderInfo } from '../../shared/local-repo'
+import type { FeedbackContext } from '../../shared/self-improve'
 import type { SymbolHit } from '../../shared/symbols'
 import type { ConflictReport, SyncJob } from '../../shared/conflicts'
 import type { BranchStatus, MrDraft } from '../../shared/new-mr'
@@ -118,6 +119,7 @@ export const api = {
   projectCounts: (ref: ProjectRef, authorIds?: number[]) => call<MrCounts>(ref, '/project/counts', { query: { authorIds: authorIds?.join(',') } }),
   config: () => call<AppConfig>(null, '/config'),
   chatStatus: () => call<{ available: boolean }>(null, '/chat/status'),
+  createFeedback: (input: { request: string, context: FeedbackContext }) => call<{ id: string }>(null, '/self-improve/changes', { method: 'POST', body: input }),
   inspectLocalFolder: (input: { path: string, project: string }) => call<LocalFolderInfo>(null, '/local/inspect', { method: 'POST', body: input }),
   createLocalWorktree: (input: { sourcePath: string, targetPath: string, project: string }) =>
     call<{ path: string }>(null, '/local/worktree', { method: 'POST', body: input }),

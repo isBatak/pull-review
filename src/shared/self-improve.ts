@@ -4,6 +4,8 @@ export const BOOTING_FILE = 'booting'
 export const BOOT_READY_METHOD = 'bootReady'
 export const BOOT_TIMEOUT_MS = 10_000
 export const OPTION_KEY_FLAG = 0x80000
+export const SOURCE_ATTRIBUTE = 'data-sourcery'
+export const SELF_IMPROVE_UI_ATTRIBUTE = 'data-self-improve-ui'
 
 export interface BootFailure {
   version: string
@@ -70,4 +72,74 @@ export function createOverlayBoot({ overlayPage, timeoutMs = BOOT_TIMEOUT_MS, go
   }
 
   return { onNavigate, ready, fail, get state() { return state } }
+}
+
+export interface PickedElement {
+  label: string
+  source: string | null
+  selector: string
+  text: string
+  html: string
+  styles: Record<string, string>
+  rect: { x: number, y: number, width: number, height: number }
+}
+
+export interface FeedbackContext {
+  appVersion: string
+  page: { route: string, title: string } | null
+  viewport: { width: number, height: number } | null
+  theme: 'light' | 'dark' | null
+  element: PickedElement | null
+  screenshot: string | null
+}
+
+export type ContextDetail = 'page' | 'viewport' | 'theme' | 'element' | 'screenshot'
+
+const LABEL_LENGTH = 40
+const TEXT_LENGTH = 200
+export const HTML_LENGTH = 2000
+
+export const KEY_STYLES = ['display', 'position', 'width', 'height', 'margin', 'padding', 'gap', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'border', 'border-radius'] as const
+
+function collapse(text: string) {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function cut(text: string, length: number) {
+  return text.length > length ? `${text.slice(0, length - 1)}…` : text
+}
+
+export function elementLabel({ ariaLabel, text, tag }: { ariaLabel: string | null, text: string, tag: string }) {
+  const name = collapse(ariaLabel ?? '') || collapse(text)
+  return name ? cut(name, LABEL_LENGTH) : `<${tag.toLowerCase()}>`
+}
+
+export function elementText(text: string) {
+  return cut(collapse(text), TEXT_LENGTH)
+}
+
+export function trimHtml(html: string, length = HTML_LENGTH) {
+  return html.length > length ? `${html.slice(0, length)}<!-- ${html.length - length} more characters -->` : html
+}
+
+export function sourceLocation(source: string | null) {
+  const match = source ? /^(.*):(\d+):(\d+)$/.exec(source) : null
+  return match ? { file: match[1]!, line: Number(match[2]), column: Number(match[3]) } : null
+}
+
+export function contextDetails(context: FeedbackContext): Array<{ key: ContextDetail, label: string, value: string }> {
+  return [
+    context.page && { key: 'page' as const, label: 'Page', value: `${context.page.title} (${context.page.route})` },
+    context.viewport && { key: 'viewport' as const, label: 'Window', value: `${context.viewport.width} × ${context.viewport.height} px` },
+    context.theme && { key: 'theme' as const, label: 'Theme', value: context.theme },
+    context.element && { key: 'element' as const, label: 'Element', value: context.element.source ?? context.element.selector },
+    context.screenshot && { key: 'screenshot' as const, label: 'Screenshot', value: 'Picture of the window' },
+  ].filter(detail => !!detail)
+}
+
+export function withoutDetails(context: FeedbackContext, omitted: Iterable<ContextDetail>): FeedbackContext {
+  const next = { ...context }
+  for (const key of omitted)
+    next[key] = null
+  return next
 }

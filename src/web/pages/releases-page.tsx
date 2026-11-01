@@ -6,6 +6,7 @@ import { badge } from 'styled-system/recipes'
 import { HotfixTags } from '../components/releases/hotfix-tags'
 import { SettingsDialog } from '../components/settings/settings-dialog'
 import { IconButton, WithTooltip } from '../components/ui/button'
+import { SelfImproveButtons } from '../feedback/self-improve'
 import { FolderTabs, folderBar } from '../components/ui/folder-tabs'
 import { homePath } from '../lib/last-home'
 import { useSettings } from '../lib/settings'
@@ -55,6 +56,7 @@ export function ReleasesPage() {
           Releases
           <span className={badge({ tone: 'accent' })}>Beta</span>
         </h1>
+        <SelfImproveButtons />
         <IconButton label="Release settings" onClick={() => setSettingsOpen(true)}>
           <Settings />
         </IconButton>

@@ -11,7 +11,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 3. Copy the sourcery transform into the repo and run it in release builds so every element carries its source location.
 - [x] 4. Overlay store: create `overlay/<version>/` as a git repo with `build/` and `source/`, and load it at start.
 - [x] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
-- [ ] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
+- [x] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
 - [ ] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
 - [ ] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
 - [ ] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
@@ -200,6 +200,16 @@ Backend module `src/server/self-improve/overlay.ts`, shared by app and CLI throu
   - element: sourcery location, styled location, CSS path, text (200 chars), outer HTML (2 KB), key computed styles (margin, padding, gap, font, colors)
   - a PNG of the window, from `app.captureScreen` cropped to the window, or `html-to-image` if that's not allowed. Add the needed call to the `"api"` allow list only if it's really needed.
 - The composer also works without a pick: the request box on `/feedback` sends with page context only.
+
+**Result (2026-11-01):**
+
+- `src/web/feedback/picker.ts`: sourcery's overlay drawing, started by `startPicker({ onPick, onCancel })` instead of hotkeys and without the editor server. It outlines the closest `data-sourcery` element and labels it `tag  file:line:column`. With ⌥ it shades margin and padding and shows `W × H  padding …  margin …  gap …`. It blocks the page's clicks, and Esc cancels. Our own UI carries `data-self-improve-ui` and is never picked or blocked.
+- `src/web/feedback/context.ts` builds the `FeedbackContext`: app version, page route and title, window size, theme, the element (label, sourcery location, CSS path, text, 2 KB of HTML, key computed styles, box) and a screenshot. The shared types and the pure helpers (`elementLabel`, `trimHtml`, `contextDetails`, `withoutDetails`…) are in `src/shared/self-improve.ts` with tests. Each removable detail is `null` when left out.
+- `src/web/feedback/screenshot.ts` uses `html-to-image` (`toPng` of the body at window size, our UI filtered out, fonts and remote images skipped because of the CSP, 8 s limit). No macOS screen-recording permission is needed, and it works in the CLI too. It runs after the pick, so the composer opens at once and the picture fills in later.
+- `src/web/feedback/self-improve.tsx`: `SelfImproveProvider` (mounted inside the router in `main.tsx`) with the pick bar, the composer ("Pointed at" chip, Context popover where each detail can be removed or added back, ⌘↵ to send) and a short "Sent to Claude · See progress" notice. `SelfImproveButtons` (crosshair, and a speech bubble linking to `/feedback`) sit in the start page, review and Releases headers. They only show when `claude` is installed (`useChatAvailable`).
+- Sending calls `api.createFeedback()`, `POST /api/self-improve/changes`. Step 7 adds that route, until then it shows "Request failed with 404".
+- Found while testing: React passes events from portals to their React parents, so Esc in the Context popover also closed the composer. The composer now handles only Esc that starts inside its own box.
+- Checked in a headless browser with the CLI build: pick bar, outline label, ⌥ measure label, chip, all five details, screenshot preview, and the expected 404 on send. Not yet checked inside the packaged app.
 
 ### Step 7. Feedback page
 

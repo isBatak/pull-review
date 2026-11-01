@@ -8,6 +8,7 @@ import { HomePage } from './pages/home-page'
 import { ReleasesPage } from './pages/releases-page'
 import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
+import { SelfImproveProvider } from './feedback/self-improve'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { callApp, isTinyApp, routeExternalLinks } from './lib/platform'
 import { useZoomController } from './lib/zoom'
@@ -51,11 +52,13 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ZoomController />
       <Router>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/releases/:kind?" element={<ReleasesPage />} />
-          <Route path="*" element={<MrRoute />} />
-        </Routes>
+        <SelfImproveProvider>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/releases/:kind?" element={<ReleasesPage />} />
+            <Route path="*" element={<MrRoute />} />
+          </Routes>
+        </SelfImproveProvider>
       </Router>
       {isTinyApp && <UpdateDialog />}
       {isTinyApp && <BootReady />}

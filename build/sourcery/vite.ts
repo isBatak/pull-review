@@ -1,7 +1,6 @@
 import type { Plugin } from 'vite'
+import { SOURCE_ATTRIBUTE } from '../../src/shared/self-improve.ts'
 import { transformJsx } from './transform.ts'
-
-export const SOURCE_ATTRIBUTE = 'data-sourcery'
 
 export function sourcery(root: string): Plugin {
   return {
