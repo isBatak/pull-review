@@ -21,6 +21,7 @@
     "origins": {
       "file://*": [
         "request",
+        "bootReady",
         "shell.open",
         "clip.write",
         "update.check",
@@ -28,6 +29,7 @@
       ],
       "http://127.0.0.1:5173": [
         "request",
+        "bootReady",
         "shell.open",
         "clip.write",
         "update.check",

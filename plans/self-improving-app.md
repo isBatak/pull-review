@@ -10,7 +10,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 2. Release build: ship unminified bundles with source maps that carry `sourcesContent`, and check the size cost.
 - [x] 3. Copy the sourcery transform into the repo and run it in release builds so every element carries its source location.
 - [x] 4. Overlay store: create `overlay/<version>/` as a git repo with `build/` and `source/`, and load it at start.
-- [ ] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
+- [x] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
 - [ ] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
 - [ ] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
 - [ ] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
@@ -177,6 +177,16 @@ Backend module `src/server/self-improve/overlay.ts`, shared by app and CLI throu
 - On the next page load, show a banner: "Your last change broke the app. Undo it, or ask Claude to fix it."
 - Holding ⌥ while the app opens skips the overlay. Settings, General gets "Use local changes" (on by default) and "Open overlay folder".
 
+**Result (2026-11-01):**
+
+- `createOverlayBoot()` in `src/shared/self-improve.ts`, with tests, holds the page logic. When the shipped page finishes loading, it moves the window to the overlay page and starts a 10 second timer. Only a `bootReady` call from a page under the overlay URL stops it, so the shipped page can't report in by mistake. A timeout, or a `fail` or `crash` event for the overlay page, sends the window back to the shipped page.
+- The page calls `bootReady` with `location.href` once React has mounted (`BootReady` in `src/web/main.tsx`). `bootReady` is a new bridge call, added to both origin lists in `tinyjs.json`. A test checks both lists.
+- On failure the loader writes `active` = `off` and `overlay/boot-failure.json` (`{ version, reason, at }`) for the Feedback page to show.
+- **txiki.js crashes (exit 139) when an imported module throws while loading, even inside `try`.** So a broken overlay backend can't be caught in-process. The loader writes `overlay/booting` before the import and deletes it after. If a start finds the marker, the last start crashed: it turns the overlay off, records why, and loads the shipped backend. The user sees one crash, then the app works.
+- ⌥ at launch: the loader reads `NSEvent.modifierFlags` through `osascript -l JavaScript` (about 0.1 s, only when an overlay is active) and skips the overlay for that start, without turning it off.
+- End to end with a packaged build: a good overlay stays on; a page with a syntax error falls back after 10 seconds and the shipped page loads again (checked with probes); a backend that throws crashes once, then the next start falls back.
+- Moved to later steps: the syntax check before the toast, plus a backend check in a separate `tjs` process (step 8, since in-process loading can't be made safe). The "your last change broke the app" banner, plus the "Use local changes" and "Open overlay folder" settings (step 7, which adds the API). Hiding the short flash of the shipped page before the swap is not done.
+
 ### Step 6. Picker and composer
 
 - Header buttons in `src/web/components/app-header.tsx` (and the review page header): `Crosshair` starts pick mode, `MessageSquare` opens `/feedback`. Shown only when `claude` is available (reuse `available()` from `src/server/chat/service.ts`).
@@ -199,6 +209,7 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
 - Sections: **Agent's turn** (queued and working), **Needs you** (needs-you and broke-app), **Done** (ready, applied, undone), each with a count. "Show 25 more" for long lists.
 - Done row: status icon, request on one line, commit chip with short hash (click opens View diff), PR chip when there is one, date.
 - Card for open items: request, meta line (page · time · viewport · theme · Context), status row, reply box with Mark done and Dismiss.
+- A banner when `overlay/boot-failure.json` exists: "Your last change broke the app", with Undo and Ask Claude to fix it. Settings, General gets "Use local changes" and "Open overlay folder" (moved here from step 5).
 - Data from new API routes in `src/server/api.ts`: `GET /api/self-improve/changes`, `POST /api/self-improve/changes`, `POST /api/self-improve/changes/:id/reply`, `/undo`, `/dismiss`, `/retry`, `/pr`, and `GET /api/self-improve/changes/:id/diff`. Poll every 2 seconds while anything is working, like the Claude review panel does.
 
 ### Step 8. Agent runner
@@ -211,6 +222,7 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
   3. Prompt template (in `src/shared/self-improve-prompt.ts`, unit tested): the request, the context block, the screenshot path, the layout of `build/` and `source/`, the rule "change `source/` and `build/` to match", the Panda CSS note, "don't touch `.git` or `changes.json`", and "reply with a one line summary".
   4. Stream steps to the card (reuse `thinking-timeline.tsx`). "View run" opens a panel with the full log.
   5. On exit 0 with file changes: boot check, commit, status `ready`, push the toast event. No changes: status `needs-you` with Claude's answer as a question for the user.
+  6. Boot check before the toast (see step 5): parse every changed `.js` in `build/`, and for backend changes import the overlay's `build/app-backend/main.js` in a separate `tjs run` process with `globalThis.__pullReviewOverlay` set, so a module that throws never reaches the app's own start.
 - Reply on a card: resume the same session (`--resume <id>`) as a new queued job, new commit on the same change.
 - Cancel a working job: kill the process, `git checkout -- . && git clean -fd` in the overlay.
 
