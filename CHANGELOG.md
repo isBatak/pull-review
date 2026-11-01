@@ -2,7 +2,7 @@
 
 ## 0.2.17 (2026-10-28)
 
-- New Releases page, opened from the start page. Pick a tag, choose commits from `develop` and the app makes the hotfix in your local folder, step by step. It helps with conflicts and remembers where you stopped.
+- New Releases page (beta), opened from the start page. Pick a tag, choose commits from `develop` and the app makes the hotfix in your local folder, step by step. It helps with conflicts and remembers where you stopped.
 
 ## 0.2.16 (2026-10-26)
 

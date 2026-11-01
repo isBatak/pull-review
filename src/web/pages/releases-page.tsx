@@ -2,6 +2,7 @@ import { ArrowLeft, Hourglass, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 import { css } from 'styled-system/css'
+import { badge } from 'styled-system/recipes'
 import { HotfixTags } from '../components/releases/hotfix-tags'
 import { SettingsDialog } from '../components/settings/settings-dialog'
 import { IconButton, WithTooltip } from '../components/ui/button'
@@ -50,7 +51,10 @@ export function ReleasesPage() {
             <ArrowLeft />
           </Link>
         </WithTooltip>
-        <h1 className={css({ flex: '1', fontSize: 'md', fontWeight: 'semibold' })}>Releases</h1>
+        <h1 className={css({ flex: '1', display: 'flex', alignItems: 'center', gap: '2', fontSize: 'md', fontWeight: 'semibold' })}>
+          Releases
+          <span className={badge({ tone: 'accent' })}>Beta</span>
+        </h1>
         <IconButton label="Release settings" onClick={() => setSettingsOpen(true)}>
           <Settings />
         </IconButton>

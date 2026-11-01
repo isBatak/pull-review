@@ -7,7 +7,7 @@ import { FolderGit2, GitPullRequest, Layers, RefreshCw, Rocket } from 'lucide-re
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { css } from 'styled-system/css'
-import { button } from 'styled-system/recipes'
+import { badge, button } from 'styled-system/recipes'
 import { parseMrTitle } from '../../shared/mr-title'
 import { analyzeStacks, groupIntoStacks, isWarning } from '../../shared/stacks'
 import { AppHeader } from '../components/app-header'
@@ -336,6 +336,7 @@ export function HomePage() {
               <Link to="/releases" className={button({ variant: 'outline', size: 'md' })}>
                 <Rocket />
                 Releases
+                <span className={badge({ tone: 'accent' })}>Beta</span>
               </Link>
               <IconButton
                 label="Refresh"
