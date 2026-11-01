@@ -39,7 +39,7 @@ pnpm desktop:install                          # builds "Pull Review.app" and cop
 How it fits together:
 
 - The page loads from `file://`, so the app uses hash routes (`#/gitlab.example.com/...`).
-- There is no local server. The page sends every API and icon request through `tiny.api.call('request')`, and the backend (`src/tiny/main.ts`) answers it with the same Hono routes the CLI serves. Images travel as base64.
+- There is no local server. The page sends every API and icon request through `tiny.api.call('request')`, and the backend (`src/tiny/app.ts`) answers it with the same Hono routes the CLI serves. Images travel as base64.
 - The backend reads `PATH` and `GITLAB_*` variables from your login shell, so a Homebrew `glab` works when the app is opened from Finder.
 - Links to GitLab, Jira and other sites open in your default browser.
 - `tinyjs build` owns `dist/`, so the project's own builds go to `out/`.
@@ -48,7 +48,7 @@ How it fits together:
 Security settings for the desktop app:
 
 - `tinyjs.json` `"api"` lets the page call only `request`, `shell.open`, `clip.write`, `update.check` and `update.install`. tinyjs has about 140 other built-in calls, such as AppleScript, secrets and clipboard reading, and the page can't reach them. Add a call to both origin lists only if the frontend really needs it.
-- `onNavigate` in `src/tiny/main.ts` keeps the window on the app's own pages. Web and mail links open in your default apps, and other links are blocked.
+- `onNavigate` in `src/tiny/app.ts` keeps the window on the app's own pages. Web and mail links open in your default apps, and other links are blocked.
 - Production builds carry a Content Security Policy (`build/content-security-policy.ts`), so the page runs only its own scripts.
 - The desktop scripts check that the installed tinyjs is the version pinned in `package.json` (`pinned.tinyjs`). Read the tinyjs changes before you move the pin.
 

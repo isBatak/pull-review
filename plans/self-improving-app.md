@@ -1,0 +1,276 @@
+# Self-improving app
+
+Let any Pull Review user point at a part of the app, ask for a change in plain words, and have their local Claude Code make it. The change shows up after a reload, can be sent upstream as a PR, survives app updates, and stacks with other changes.
+
+This file is the single plan for the whole feature. Update the todo list and the notes under each step as work lands.
+
+## Todo
+
+- [x] 1. Spike: prove the window can load a `file://` page from an overlay folder and the backend can import an overlay `main.js`.
+- [x] 2. Release build: ship unminified bundles with source maps that carry `sourcesContent`, and check the size cost.
+- [x] 3. Copy the sourcery transform into the repo and run it in release builds so every element carries its source location.
+- [x] 4. Overlay store: create `overlay/<version>/` as a git repo with `build/` and `source/`, and load it at start.
+- [ ] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
+- [ ] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
+- [ ] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
+- [ ] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
+- [ ] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
+- [ ] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
+- [ ] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
+- [ ] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
+- [ ] 13. CLI: give the CLI its own overlay and the same Feedback flow.
+- [ ] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
+
+## Reference app
+
+The screenshots come from another app ("Feedback" page in a personal dashboard). What it does:
+
+1. **Feedback page** in the left nav. A large request box at the top, then lists by state. The header shows the total ("35 notes").
+2. **Done list.** Each row has a green check, the request text cut to one line, a commit chip with a branch icon and short hash (`37398b1`), and a date. A row without a commit shows "Done" instead of a hash. "Show 25 more" pages the list.
+3. **Pick mode.** A crosshair button at the bottom of the nav starts it. A bar at the bottom says "Tap what this note is about · Hold ⌥ to measure · Cancel". Hovering outlines the element in purple, the cursor turns into a crosshair.
+4. **Composer.** After a pick, a floating box opens at the bottom with the request text and a send button. Below it: a chip "Pointed at "Feedback"" with a remove button, and "Context · 5 details".
+5. **Agent's turn card.** Shows the request, then a meta line: page name, time, viewport (`desktop 1322 px`), theme (`light`), app name, and a Context link. A status row ("Queued · waiting for the agent to start"), then a reply box with Mark done and Dismiss.
+6. **Working state.** The status turns into a yellow half circle and "Agent working · 3 min · View run".
+7. **Ship toast.** "A new admin just shipped. Reload to get it." with a Reload button.
+
+## Decisions
+
+| Topic | Decision |
+|---|---|
+| Who can use it | Every app user, not just people with a clone of the repo. |
+| What Claude edits | The shipped build, not a source checkout. Release builds become readable (no minify) and ship source maps with the original source inside. |
+| Where edits live | A versioned overlay folder outside the `.app`. The bundle stays signed and untouched. |
+| How changes are recorded | The overlay is a git repo. Commit 1 is the shipped build, each change is one commit on top. |
+| Source for PRs | The overlay has a `source/` tree written from the source maps. Claude edits `source/` and `build/` in the same commit. |
+| Agent rights | The user's full Claude Code rights. |
+| Queue | One request at a time. Each one runs on top of the last commit, so the stack stays linear. |
+| Context | Picked element, page, viewport, theme, version and a window screenshot. |
+| Element to source | Copy sourcery's transform and picker code into this repo. |
+| Placement | Two header buttons (pick, feedback) on every page, plus a `/feedback` route. |
+| Safety | Syntax check before the toast, ready handshake after reload, automatic fallback to the shipped build. |
+| PRs | Opt-in "Send as PR" through `gh`. Own PR on `main` when the change applies alone, otherwise stacked with "Depends on #N". |
+| Updates | Claude replays open changes onto the new version. Merged ones are dropped. |
+| CLI | Separate overlay and change list from the app. |
+
+## Design
+
+### Folders
+
+App overlay root: `~/Library/Application Support/dev.pull-review.app/overlay/` (the tinyjs data folder for the app id, see step 1).
+CLI overlay root: `~/Library/Application Support/dev.pull-review.app/cli-overlay/` on macOS, `$XDG_DATA_HOME/pull-review/cli-overlay/` elsewhere.
+
+```
+overlay/
+  0.2.18/                 one per app version
+    .git/
+    build/
+      app-web/            copy of Resources/app/frontend
+      app-backend/        copy of the backend main.js
+    source/
+      src/...             written from sourcesContent, src/ only
+      package.json
+    changes.json          the change list, see below
+    attachments/<id>/     screenshot and context per change
+  active                  text file with the version folder in use, or "off"
+```
+
+`changes.json` holds an ordered list:
+
+```ts
+interface LocalChange {
+  id: string
+  request: string
+  context: ChangeContext
+  status: 'queued' | 'working' | 'ready' | 'applied' | 'needs-you' | 'broke-app' | 'undone' | 'dismissed'
+  commits: string[]
+  claudeSessionId: string
+  dependsOn: string[]
+  pr?: { number: number, url: string, branch: string, state: 'open' | 'merged' | 'closed' }
+  createdAt: string
+  finishedAt?: string
+  durationMs?: number
+  error?: string
+}
+```
+
+### Step 1. Spike: loading an overlay
+
+Prove both halves before anything else, because the rest depends on them.
+
+- **Web.** Add `"readAccess"` to `tinyjs.json`, set to the overlay root (not the whole home folder). From `init(app)` in `src/tiny/main.ts`, if `active` names a version that matches `__APP_VERSION__`, call `app.eval("location.replace('file://…/build/app-web/index.html')")`. `onNavigate` already allows `file:` pages.
+- **Check CSP.** `build/content-security-policy.ts` limits scripts to the page's own files. Make sure the overlay page still runs and that the hash list (if any) is redone or relaxed for the overlay copy.
+- **Backend.** Make the shipped `main.js` a thin loader: at start it checks for `build/app-backend/main.js` in the active overlay and re-exports its `api`, `init` and `onNavigate` with a dynamic `import()`. Prove txiki.js can import an absolute `file://` path. If it can't, read the file and evaluate it as a module from a blob or data URL.
+- **Bridge allow list.** The overlay page has a `file://` origin, so the `"api"` origins in `tinyjs.json` already cover it. Confirm.
+- **Output:** a short note here saying what worked, with any tinyjs limits found.
+
+**Result (2026-11-01, tinyjs 0.50.1), tested with a throwaway packaged app:**
+
+- The generated `entry.js` does `import * as appMod from './src/main.js'` and reads `api`, `init`, `onNavigate` and the other hooks once, after the import finishes. So `main.ts` can `await import()` an overlay backend at top level and re-export its handlers.
+- txiki.js `import()` loads a plain absolute path (`/Users/…/main.js`). A `file://` URL fails. Query strings for cache busting are not supported, so a changed backend needs a restart.
+- From `init(app)`, `app.eval("location.replace('file:///…/index.html')")` moves the window to a page outside the bundle. Relative scripts load, and the `tiny` bridge works there. `onNavigate` is not asked for `file:` moves.
+- Without `"readAccess"` the overlay page is blocked. `"readAccess": "~/…"` works, the launcher expands `~`. So the overlay root must be a fixed path under home. Use tinyjs's own data folder: `~/Library/Application Support/dev.pull-review.app/overlay`.
+- The production CSP already allows `file:` scripts and styles, so the overlay page runs as is.
+
+### Step 2. Readable release build
+
+- In `vite.config.ts`, for the app build: `build.minify: false`, `build.sourcemap: true`. Keep hashed file names.
+- In `tsdown.config.ts`, same for `app-backend` and `cli`: no minify, source maps on.
+- Make sure maps keep `sourcesContent` and that `sources` paths are relative to the repo root (`src/web/...`), so they can be written back as a tree.
+- Measure the zip size before and after, and write the numbers here. Shiki grammars are already large and unminified JSON, so the growth should be modest.
+- Panda: the built CSS is atomic. Note in the agent prompt that a new style token used in `source/` needs a matching rule added by hand to the built CSS in `build/`.
+
+**Result (2026-11-01):**
+
+- `vite.config.ts` sets `minify: false` and `sourcemap: true`. `tsdown.config.ts` sets `sourcemap: true` (tsdown never minified).
+- `build/own-source-maps.ts` runs after each bundle is written, for Vite and tsdown. It rewrites `sources` to repo paths (`src/web/main.tsx`), keeps `sourcesContent` only for `src/` files, and deletes maps (and their `sourceMappingURL` line) for chunks with no own code, like the Shiki grammars. The logic is in `src/shared/source-maps.ts` with tests, and `ownSources()` there is ready for step 4.
+- Dependency source text was 16 MB of the maps, own source only 1.15 MB.
+- Sizes for `out/app-web` + `out/app-backend`, zipped: 3.78 MB before, 5.05 MB after (+1.27 MB). Without the trim it was 8.29 MB.
+- What's left in the maps: web 126 own files, app backend 48, CLI 49.
+- tsdown loads its config through Node's type stripping, which needs file extensions. `tsconfig.json` now has `allowImportingTsExtensions`, and the two build-time imports use `.ts`.
+
+### Step 3. Element to source with sourcery code
+
+Copy from `isBatak/isbatak-labs/packages/tools/sourcery` into `build/sourcery/` (transform) and `src/web/feedback/` (picker, step 6):
+
+- `core/transform.ts` (oxc-parser plus magic-string) as a Vite plugin in `build/`, turned on for production too. Attribute `data-sourcery="src/web/components/sidebar.tsx:42:5"`, relative to the repo root (not Vite's `root: src/web`).
+- `core/panda.ts` so `styled()` and slot recipe contexts get `data-sourcery-styled`.
+- The overlay drawing code from `client/index.ts`, reworked into `pickElement(): Promise<PickResult | null>` started from a button, not from hotkeys, and with no editor server.
+- Add `oxc-parser` and `magic-string` as dev dependencies. Keep the MIT notice and credit in a `LICENSE` file next to the copied code.
+
+**Result (2026-11-01):**
+
+- `build/sourcery/transform.ts` is sourcery's `core/transform.ts` without the Panda part. This repo styles with `css()` only and never imports Panda's `styled` or `jsx` entry, so `data-sourcery-styled` would never be set. ⌥ in pick mode therefore only measures.
+- `build/sourcery/vite.ts` runs the transform in dev and build, for `.tsx`/`.jsx` outside `node_modules`. Paths are relative to the repo root, not Vite's `src/web` root.
+- Tests in `build/sourcery/transform.test.ts`. `vitest.config.ts` now also picks up `build/**/*.test.ts`.
+- `build/sourcery/LICENSE` keeps the MIT notice and says where the code came from.
+- A production build tags 2,142 places. The source maps still hold the original, untagged source, so `source/` stays clean.
+- Checked in a headless browser with the CLI build: the home page renders, 28 tagged elements, no console errors.
+- The picker overlay from `client/index.ts` moves to step 6, where it's used.
+
+### Step 4. Overlay store
+
+Backend module `src/server/self-improve/overlay.ts`, shared by app and CLI through the existing host interface (`src/tiny/local-host.ts` and `src/server/local/node-host.ts`):
+
+- `ensureOverlay(version)`: if missing, copy the shipped build into `build/`, write `source/` from every `.map` file's `sourcesContent` (skip `node_modules` and virtual modules), `git init`, commit "Shipped build <version>", tag it `shipped`.
+- `activeOverlay()` and `setActive(version | 'off')`.
+- `commitChange(change)`: `git add -A && git commit` with the request as the message, store the hash on the change.
+- `undoChange(id)`: `git revert` its commits. If the revert conflicts, mark "Needs you" and let Claude resolve it as a new queued job.
+- `reset()`: `git reset --hard shipped`, all changes marked undone.
+- Needs `git` on the Mac. If it's missing, the Feedback page explains how to install the Command Line Tools.
+
+**Result (2026-11-01):**
+
+- `src/server/self-improve/overlay.ts` (`createOverlayStore`) with tests in `overlay.test.ts`, run against real git. It takes `{ root, version, parts }`, where each part is a shipped folder copied to `build/<name>`.
+- `ensure()` builds everything in `<version>.partial` (copy, `git init`, `source/` from the maps with `ownSources()`, first commit, tag `shipped`) and moves it into place only at the end. A half-made overlay never looks finished.
+- `changes.json` and `attachments/` are in `.git/info/exclude`, so they never land in a change's commit.
+- Also: `isActive()`, `setActive()`, `changedFiles()`, `commit()` (returns `null` when nothing changed), `revert()` (newest first, aborts cleanly on conflict), `discard()` (drop work in progress) and `reset()` (back to `shipped`).
+- The backend entry is now a loader. `src/tiny/app.ts` is the old `main.ts`. `src/tiny/main.ts` checks `active` (only inside a packaged `.app`, so `tinyjs dev` never uses an overlay), sets `globalThis.__pullReviewOverlay`, and imports either the overlay's `build/app-backend/main.js` or `./app`. The overlay's own copy of the loader sees the flag and loads its own app.
+- Swapping the page in `init()` did not work: the first page has not loaded yet and the `eval` is lost. The loader instead wraps `onNavigate` and, on the main page's `finish` event for a `file:` URL outside the overlay, runs `location.replace` to the overlay page. This also catches a reload that lands on the shipped page. The shipped page shows briefly first, step 5 can hide that.
+- `tinyjs.json` has `"readAccess": "~/Library/Application Support/dev.pull-review.app/overlay"`. A test keeps it in sync with `APP_OVERLAY_ROOT` in `src/shared/self-improve.ts`.
+- End to end with a packaged build: made a real overlay with the store (159 source files), marked its backend and page, launched the app. The overlay backend answered requests and the overlay page loaded and called the bridge. Without an overlay the app starts as before.
+- Not done here: telling the user when `git` is missing. That belongs to the Feedback page (step 7).
+
+### Step 5. Boot check and fallback
+
+- Before the toast: run `node --check` (or the txiki equivalent) on every changed `.js` in `build/`. Fail means status `needs-you` with the error, and Claude gets one automatic retry.
+- After reload, the overlay page calls a `ready` bridge call once React has mounted. The backend starts a 10 second timer when it swaps the page. No `ready` in time, or an error from the overlay backend import, means: load the shipped page, set `active` to `off`, mark the newest applied change `broke-app`.
+- On the next page load, show a banner: "Your last change broke the app. Undo it, or ask Claude to fix it."
+- Holding ⌥ while the app opens skips the overlay. Settings, General gets "Use local changes" (on by default) and "Open overlay folder".
+
+### Step 6. Picker and composer
+
+- Header buttons in `src/web/components/app-header.tsx` (and the review page header): `Crosshair` starts pick mode, `MessageSquare` opens `/feedback`. Shown only when `claude` is available (reuse `available()` from `src/server/chat/service.ts`).
+- Pick mode bar at the bottom: "Click what this request is about · Hold ⌥ to measure · Cancel". Esc cancels.
+- Hover outlines the element under the pointer with a `data-sourcery` attribute. ⌥ shows the element's size and the gaps to its neighbours and parent, and switches to the `styled()` location when there is one.
+- Click opens the composer floating at the bottom of the current page: textarea, send button, a chip "Pointed at "<label>"" with remove, and "Context · N details".
+- Context collected (each item can be removed in the popover):
+  - route and page title
+  - window width and height, theme, zoom
+  - app version and overlay commit
+  - element: sourcery location, styled location, CSS path, text (200 chars), outer HTML (2 KB), key computed styles (margin, padding, gap, font, colors)
+  - a PNG of the window, from `app.captureScreen` cropped to the window, or `html-to-image` if that's not allowed. Add the needed call to the `"api"` allow list only if it's really needed.
+- The composer also works without a pick: the request box on `/feedback` sends with page context only.
+
+### Step 7. Feedback page
+
+New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.tsx`.
+
+- Request box at the top.
+- Sections: **Agent's turn** (queued and working), **Needs you** (needs-you and broke-app), **Done** (ready, applied, undone), each with a count. "Show 25 more" for long lists.
+- Done row: status icon, request on one line, commit chip with short hash (click opens View diff), PR chip when there is one, date.
+- Card for open items: request, meta line (page · time · viewport · theme · Context), status row, reply box with Mark done and Dismiss.
+- Data from new API routes in `src/server/api.ts`: `GET /api/self-improve/changes`, `POST /api/self-improve/changes`, `POST /api/self-improve/changes/:id/reply`, `/undo`, `/dismiss`, `/retry`, `/pr`, and `GET /api/self-improve/changes/:id/diff`. Poll every 2 seconds while anything is working, like the Claude review panel does.
+
+### Step 8. Agent runner
+
+`src/server/self-improve/runner.ts`, built on the same pieces as `src/server/chat/service.ts` (`findExecutable` for `claude`, `claudeEnv()` without `ANTHROPIC_API_KEY`, `applyStreamLine` for stream-json).
+
+- One job at a time from the queue. Each job:
+  1. `cwd` is the overlay version folder.
+  2. Run `claude -p --output-format stream-json --verbose --session-id <id>` with the user's own permission settings. The prompt comes from a file, like the chat does.
+  3. Prompt template (in `src/shared/self-improve-prompt.ts`, unit tested): the request, the context block, the screenshot path, the layout of `build/` and `source/`, the rule "change `source/` and `build/` to match", the Panda CSS note, "don't touch `.git` or `changes.json`", and "reply with a one line summary".
+  4. Stream steps to the card (reuse `thinking-timeline.tsx`). "View run" opens a panel with the full log.
+  5. On exit 0 with file changes: boot check, commit, status `ready`, push the toast event. No changes: status `needs-you` with Claude's answer as a question for the user.
+- Reply on a card: resume the same session (`--resume <id>`) as a new queued job, new commit on the same change.
+- Cancel a working job: kill the process, `git checkout -- . && git clean -fd` in the overlay.
+
+### Step 9. Reload toast
+
+- Bottom right toast: "A new version of the app is ready. Reload to get it." with Reload.
+- Web-only change: Reload swaps the page to the overlay (or reloads it) and keeps the current route.
+- Backend change (anything under `build/app-backend/`): the button says Restart and quits and relaunches the app, since the backend can't be swapped in place.
+- After the ready handshake, status becomes `applied`.
+
+### Step 10. Change actions
+
+- **View diff**: the `source/` diff of the change, shown with the app's own diff view (`@pierre/diffs`). A tab shows the `build/` diff.
+- **Undo**: revert, then the reload toast.
+- **Retry** for needs-you and broke-app: queue the same request again with the error added.
+- **Dismiss**: drop a queued or failed change without touching the code.
+
+### Step 11. Send as PR
+
+Opt-in button on a done change, plus "Send all as PRs".
+
+1. Check `gh auth status`. If `gh` is missing or logged out, offer "Copy patch" and "Open issue": a new issue on `isBatak/pull-review` prefilled with the request, context (without the screenshot) and the source diff.
+2. `gh repo fork isBatak/pull-review --clone=false` once, remember the fork.
+3. Work in a temp clone in `~/Library/Caches/pull-review/pr-work`, shallow from `main`.
+4. Turn the change's commits into a source patch: `git format-patch` limited to `source/`, with the `source/` prefix stripped.
+5. `git apply --3way` on `main`. If it applies, branch `self-improve/<id>` from `main`. If not, branch from the PR branch of the change it depends on (from `dependsOn`, or found by trying the earlier changes in order) and note "Depends on #N" in the body. If it applies to neither, queue a Claude job to rebase it in the temp clone.
+6. Add a version bump and `CHANGELOG.md` entry? No: leave that to the maintainer, since many PRs would clash on the version line.
+7. Push to the fork and `gh pr create` with title = first line of the request, body = full request, context, before screenshot, "Made with Pull Review's self-improve feature on <version>".
+8. Save the PR on the change. Refresh its state when the Feedback page opens.
+
+### Step 12. Update replay
+
+Runs when the app starts on a new version and an older overlay has changes in `applied` state.
+
+1. `ensureOverlay(newVersion)`. Keep the old one until replay is done. The app runs the shipped build meanwhile.
+2. Drop changes whose PR is merged and contained in the new tag (`gh api repos/isBatak/pull-review/compare/<merge sha>...v<new>`, or check the release notes for the PR number when `gh` is missing).
+3. For each remaining change in order:
+   - Try `git apply --3way` of its `build/` and `source/` diff from the old overlay.
+   - If that fails, queue a Claude job: "Redo this change on the new version", with the request, the old source diff and the context.
+   - If Claude can't, status `needs-you` with Retry and Drop.
+4. When the queue is empty, set `active` to the new version and show the reload toast. Old overlays are deleted after 30 days.
+5. The Feedback page shows a banner while replay runs: "Moving 3 local changes to 0.2.19".
+
+### Step 13. CLI
+
+- Same overlay module with the CLI root. `bin/pull-review.mjs` checks the active CLI overlay and imports its `cli.mjs` when the version matches. The server serves the overlay's `web/` folder.
+- Same Feedback page and picker (it's the same web code). The toast says "Restart the CLI" for backend changes.
+- The CLI's change list is separate from the app's.
+
+### Step 14. Docs, tests and release
+
+- Unit tests for: prompt building, context trimming, `changes.json` state moves, source tree from source maps, patch prefix stripping, the "applies alone or depends on" choice, and the merged-PR check.
+- README: a "Self-improve" section covering what it does, where files live, how to turn it off, and that Claude runs with the user's own rights.
+- Ship the header buttons with a "Beta" label, like the Releases page.
+
+## Risks and open points
+
+- **Full Claude rights.** Claude can run any command the user's settings allow. The prompt sets the overlay as its scope, but nothing enforces it. Say this clearly in the README and on first use.
+- **Secrets in the screenshot.** Diffs and comments on screen go to Claude and, if the user chooses, into a GitHub PR. Strip the screenshot from PRs and issues by default.
+- **Build size.** Unminified bundles and maps make the download bigger. Step 2 measures it.
+- **Panda CSS drift.** Hand-written CSS in `build/` may not match what Panda would make from `source/`. The PR is what counts, the local build only has to look right.
+- **txiki.js dynamic import.** Step 1 may find that the backend overlay needs a different loading trick.
+- **Source maps can lag source.** Files with no JSX or that are fully tree-shaken won't be in the maps, so `source/` is partial. Claude must be told that `source/` is not the whole repo. The PR step applies to a real clone, so missing files there are fine.
