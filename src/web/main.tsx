@@ -4,11 +4,12 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter, Route, Routes, useLocation } from 'react-router'
 import { parseMrRef } from '../shared/mr-ref'
 import { BOOT_READY_METHOD } from '../shared/self-improve'
+import { FeedbackPage } from './pages/feedback-page'
 import { HomePage } from './pages/home-page'
 import { ReleasesPage } from './pages/releases-page'
 import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
-import { SelfImproveProvider } from './feedback/self-improve'
+import { FEEDBACK_PATH, SelfImproveProvider } from './feedback/self-improve'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { callApp, isTinyApp, routeExternalLinks } from './lib/platform'
 import { useZoomController } from './lib/zoom'
@@ -56,6 +57,7 @@ createRoot(document.getElementById('root')!).render(
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/releases/:kind?" element={<ReleasesPage />} />
+            <Route path={FEEDBACK_PATH} element={<FeedbackPage />} />
             <Route path="*" element={<MrRoute />} />
           </Routes>
         </SelfImproveProvider>

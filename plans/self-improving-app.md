@@ -12,7 +12,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 4. Overlay store: create `overlay/<version>/` as a git repo with `build/` and `source/`, and load it at start.
 - [x] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
 - [x] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
-- [ ] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
+- [x] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
 - [ ] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
 - [ ] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
 - [ ] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
@@ -69,8 +69,9 @@ overlay/
     source/
       src/...             written from sourcesContent, src/ only
       package.json
-    changes.json          the change list, see below
-    attachments/<id>/     screenshot and context per change
+  changes.json            the change list for every version, see below
+  attachments/<id>/       screenshot.png per change
+  boot-failure.json       why the last start fell back (step 5)
   active                  text file with the version folder in use, or "off"
 ```
 
@@ -221,6 +222,17 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
 - Card for open items: request, meta line (page · time · viewport · theme · Context), status row, reply box with Mark done and Dismiss.
 - A banner when `overlay/boot-failure.json` exists: "Your last change broke the app", with Undo and Ask Claude to fix it. Settings, General gets "Use local changes" and "Open overlay folder" (moved here from step 5).
 - Data from new API routes in `src/server/api.ts`: `GET /api/self-improve/changes`, `POST /api/self-improve/changes`, `POST /api/self-improve/changes/:id/reply`, `/undo`, `/dismiss`, `/retry`, `/pr`, and `GET /api/self-improve/changes/:id/diff`. Poll every 2 seconds while anything is working, like the Claude review panel does.
+
+**Result (2026-11-01):**
+
+- `changes.json` and `attachments/` moved from the version folder to the overlay root, because step 12 carries changes from one version to the next. Each change keeps the `version` it was made on. `LocalChange` (in `src/shared/self-improve.ts`) also gained `hasScreenshot` and `startedAt`. The screenshot is stored as `attachments/<id>/screenshot.png`, not inside `changes.json`, so Claude can open it in step 8. `LocalHost` got `writeBinary` for that.
+- `src/server/self-improve/service.ts` (`createSelfImproveService`, tests in `service.test.ts`): `state()`, `create()`, `dismiss()`, `setActive()`, `clearBootFailure()`, `openFolder()`, plus `updateChanges()`, which runs one write at a time, for the runner in step 8.
+- Routes in `src/server/self-improve/routes.ts`, registered on the API: `GET /self-improve/state`, `POST /self-improve/changes`, `POST /self-improve/changes/:id/dismiss`, `POST /self-improve/active`, `POST /self-improve/boot-failure/dismiss`, `POST /self-improve/open-folder`. Without a service they answer 404 "Local changes are not available here." Diff, undo, reply, retry and PR routes come with steps 10 and 11. There is no screenshot route yet, since no page shows the picture.
+- The app creates the service only inside a packaged `.app` (`packagedAppDir()`), copying `Resources/app/frontend` and `Resources/app/src`. The CLI service was wired early, so the page can be tested in a browser: root `~/Library/Application Support/dev.pull-review.app/cli-overlay` (or `$XDG_DATA_HOME/pull-review/cli-overlay`), parts `web/`, `cli.mjs` and `cli.mjs.map`. Loading the CLI overlay at start is still step 13.
+- `src/web/pages/feedback-page.tsx` at `/feedback`: header with count and the pick button, the failed-start banner ("Got it" clears it), the request box (⌘↵), Agent's turn and Needs you cards (request, page · time · desktop/mobile width · theme · Context popover, status row, Dismiss), Done rows (check, request, short commit hash, date, "Show 25 more"), and an empty state. `useSelfImproveState()` polls every 2 s while anything is queued or working.
+- The header buttons now show only when `claude` is installed and the state route answers, so the CLI and dev builds hide them where local changes can't work.
+- Settings, General: "Local changes" with "Use local changes" and "Open folder" (`src/web/components/settings/local-changes-setting.tsx`).
+- Checked in a headless browser with the CLI build: banner, empty state, a request from the box and one from the composer (with its PNG on disk), Dismiss, "Got it", the Context popover. No console errors. Not yet checked inside the packaged app. "Mark done" and "Leave a reply" from the reference are step 10.
 
 ### Step 8. Agent runner
 

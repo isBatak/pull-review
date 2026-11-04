@@ -8,7 +8,9 @@ import { cac } from 'cac'
 import open from 'open'
 import { mrAppPath, parseMrRef } from '../shared/mr-ref'
 import { createApp } from './app'
+import { createGitTools } from './local/git'
 import { createNodeLocalHost } from './local/node-host'
+import { createSelfImproveService } from './self-improve/service'
 import { createChatService } from './chat/service'
 import { detectMrFromGit } from './detect'
 import { resolveToken, tokenHelp } from './token'
@@ -54,6 +56,12 @@ function stopChatOnExit(chat: ChatService) {
   }
 }
 
+function cliOverlayRoot(home: string) {
+  if (process.platform === 'darwin')
+    return `${home}/Library/Application Support/dev.pull-review.app/cli-overlay`
+  return `${process.env.XDG_DATA_HOME || `${home}/.local/share`}/pull-review/cli-overlay`
+}
+
 const cli = cac('pull-review')
 
 cli
@@ -79,7 +87,14 @@ cli
     const host = createNodeLocalHost()
     const chat = createChatService(host)
     stopChatOnExit(chat)
-    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath, cwd: process.cwd(), chat, host }, Number(flags.port))
+    const webRoot = fileURLToPath(new URL('./web', import.meta.url))
+    const cliFile = fileURLToPath(import.meta.url)
+    const selfImprove = createSelfImproveService(host, createGitTools(host), {
+      root: cliOverlayRoot(host.homeDir),
+      version: __APP_VERSION__,
+      parts: [{ name: 'web', from: webRoot }, { name: 'cli.mjs', from: cliFile }, { name: 'cli.mjs.map', from: `${cliFile}.map` }],
+    })
+    const port = await listen({ webRoot, initialPath, cwd: process.cwd(), chat, host, selfImprove }, Number(flags.port))
     const url = `http://127.0.0.1:${port}${initialPath}`
     console.log(`\n  pull-review is running at ${url}\n  Press Ctrl+C to stop.\n`)
     if (flags.open)

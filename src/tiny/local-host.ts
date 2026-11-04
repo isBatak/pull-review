@@ -99,6 +99,7 @@ export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string
     },
 
     writeFile: (path, text) => tjs.writeFile(path, encoder.encode(text)),
+    writeBinary: (path, bytes) => tjs.writeFile(path, bytes),
     readFile: async (path) => {
       try {
         return new TextDecoder().decode(await tjs.readFile(path))

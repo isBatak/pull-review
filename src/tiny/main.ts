@@ -1,8 +1,7 @@
 import type * as AppModule from './app'
 import type { BootFailure, OverlayBoot, PageNavigation } from '../shared/self-improve'
-import { APP_OVERLAY_ROOT, BOOT_FAILURE_FILE, BOOTING_FILE, createOverlayBoot, OPTION_KEY_FLAG, overlayPageUrl } from '../shared/self-improve'
+import { APP_OVERLAY_ROOT, BOOT_FAILURE_FILE, BOOTING_FILE, createOverlayBoot, OPTION_KEY_FLAG, overlayPageUrl, packagedAppDir } from '../shared/self-improve'
 
-const PACKAGED_RUNTIME = /\.app\/Contents\/MacOS\/[^/]+$/
 const OVERLAY_ROOT = `${tjs.homeDir}/${APP_OVERLAY_ROOT}`
 const BOOTING_MARKER = `${OVERLAY_ROOT}/${BOOTING_FILE}`
 const MODIFIER_FLAGS_SCRIPT = 'ObjC.import("AppKit"); $.NSEvent.modifierFlags'
@@ -41,7 +40,7 @@ async function isOptionKeyDown() {
 
 async function findActiveOverlay(): Promise<string | null> {
   // The overlay's own copy of this loader must load its app, not look for an overlay again.
-  if (globalThis.__pullReviewOverlay || !PACKAGED_RUNTIME.test(tjs.exePath))
+  if (globalThis.__pullReviewOverlay || !packagedAppDir(tjs.exePath))
     return null
   try {
     const version = decoder.decode(await tjs.readFile(`${OVERLAY_ROOT}/active`)).trim()

@@ -13,6 +13,13 @@ export interface BootFailure {
   at: string
 }
 
+const PACKAGED_RUNTIME = /^(.*\.app)\/Contents\/MacOS\/[^/]+$/
+
+export function packagedAppDir(exePath: string) {
+  const match = PACKAGED_RUNTIME.exec(exePath)
+  return match ? `${match[1]}/Contents/Resources/app` : null
+}
+
 export function overlayPageUrl(overlayDir: string) {
   return `file://${encodeURI(`${overlayDir}/build/app-web/index.html`)}`
 }
@@ -142,4 +149,57 @@ export function withoutDetails(context: FeedbackContext, omitted: Iterable<Conte
   for (const key of omitted)
     next[key] = null
   return next
+}
+
+export type ChangeStatus = 'queued' | 'working' | 'ready' | 'applied' | 'needs-you' | 'broke-app' | 'undone' | 'dismissed'
+
+export interface LocalChange {
+  id: string
+  request: string
+  context: FeedbackContext
+  hasScreenshot: boolean
+  version: string
+  status: ChangeStatus
+  createdAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  commits: string[]
+  summary: string | null
+  error: string | null
+}
+
+export interface SelfImproveState {
+  active: boolean
+  overlayDir: string | null
+  bootFailure: BootFailure | null
+  changes: LocalChange[]
+}
+
+export const OPEN_STATUSES: ChangeStatus[] = ['queued', 'working']
+export const NEEDS_YOU_STATUSES: ChangeStatus[] = ['needs-you', 'broke-app']
+export const DONE_STATUSES: ChangeStatus[] = ['ready', 'applied', 'undone']
+
+const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/
+
+export function pngBytes(dataUrl: string): Uint8Array | null {
+  const match = PNG_DATA_URL.exec(dataUrl)
+  if (!match)
+    return null
+  const binary = atob(match[1]!)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++)
+    bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
+
+export function requestTime(iso: string, now = new Date()) {
+  const date = new Date(iso)
+  const sameDay = date.toDateString() === now.toDateString()
+  const time = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return sameDay ? `Today ${time}` : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export function workingFor(startIso: string, now = new Date()) {
+  const minutes = Math.max(0, Math.floor((now.getTime() - new Date(startIso).getTime()) / 60_000))
+  return minutes < 1 ? 'just started' : `${minutes} min`
 }

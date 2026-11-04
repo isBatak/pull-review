@@ -1,7 +1,7 @@
 import type { FeedbackContext } from './self-improve'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import tinyConfig from '../../tinyjs.json'
-import { APP_OVERLAY_ROOT, BOOT_READY_METHOD, contextDetails, createOverlayBoot, elementLabel, elementText, overlayPageUrl, sourceLocation, trimHtml, withoutDetails } from './self-improve'
+import { APP_OVERLAY_ROOT, BOOT_READY_METHOD, contextDetails, createOverlayBoot, elementLabel, elementText, overlayPageUrl, packagedAppDir, requestTime, sourceLocation, trimHtml, withoutDetails, workingFor } from './self-improve'
 
 const SHIPPED = 'file:///Applications/Pull%20Review.app/Contents/Resources/app/frontend/index.html'
 const OVERLAY = 'file:///Users/me/overlay/1.0.0/build/app-web/index.html'
@@ -14,6 +14,11 @@ describe('self-improve paths', () => {
   it('lets every app page report that it started', () => {
     for (const calls of Object.values(tinyConfig.api.origins))
       expect(calls).toContain(BOOT_READY_METHOD)
+  })
+
+  it('finds the shipped app inside a packaged bundle only', () => {
+    expect(packagedAppDir('/Applications/Pull Review.app/Contents/MacOS/tjs')).toBe('/Applications/Pull Review.app/Contents/Resources/app')
+    expect(packagedAppDir('/Users/me/.tinyjs/bin/tjs')).toBeNull()
   })
 
   it('points the window at the overlay page', () => {
@@ -119,5 +124,19 @@ describe('feedback context', () => {
     expect(contextDetails(trimmed).map(detail => detail.key)).toEqual(['page', 'viewport', 'element'])
     expect(trimmed.appVersion).toBe('1.0.0')
     expect(context.screenshot).not.toBeNull()
+  })
+})
+
+describe('request times', () => {
+  const now = new Date(2026, 9, 30, 22, 30)
+
+  it('shows the time for today and the date for older requests', () => {
+    expect(requestTime(new Date(2026, 9, 30, 22, 8).toISOString(), now)).toBe('Today 22:08')
+    expect(requestTime(new Date(2026, 9, 27, 9, 0).toISOString(), now)).toBe('Oct 27')
+  })
+
+  it('says how long the agent has worked', () => {
+    expect(workingFor(new Date(2026, 9, 30, 22, 29, 40).toISOString(), now)).toBe('just started')
+    expect(workingFor(new Date(2026, 9, 30, 22, 27).toISOString(), now)).toBe('3 min')
   })
 })

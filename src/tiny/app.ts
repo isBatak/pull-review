@@ -1,7 +1,10 @@
 import { parseEnvOutput } from '../shared/env-output'
+import { APP_OVERLAY_ROOT, packagedAppDir } from '../shared/self-improve'
 import { CHECK_FOR_UPDATES_MENU_ID } from '../shared/updates'
 import { createApi } from '../server/api'
 import { createChatService } from '../server/chat/service'
+import { createGitTools } from '../server/local/git'
+import { createSelfImproveService } from '../server/self-improve/service'
 import { createTokenResolver } from '../server/token-core'
 import { createTinyLocalHost } from './local-host'
 
@@ -82,7 +85,16 @@ const localEnv = loginShellEnv.then((env) => {
 const host = createTinyLocalHost(() => localEnv)
 const chat = createChatService(host)
 
-const server = createApi({ resolveToken, chat, host })
+const shippedApp = packagedAppDir(tjs.exePath)
+const selfImprove = shippedApp
+  ? createSelfImproveService(host, createGitTools(host), {
+      root: `${tjs.homeDir}/${APP_OVERLAY_ROOT}`,
+      version: __APP_VERSION__,
+      parts: [{ name: 'app-web', from: `${shippedApp}/frontend` }, { name: 'app-backend', from: `${shippedApp}/src` }],
+    })
+  : undefined
+
+const server = createApi({ resolveToken, chat, host, selfImprove })
 
 const TEXT_TYPE = /^(?:text\/|application\/(?:json|javascript|xml)|image\/svg\+xml)/
 

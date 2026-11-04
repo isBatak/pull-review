@@ -61,11 +61,8 @@ describe('the overlay store', () => {
     expect(git('log', '--format=%s')).toBe('Change the app\nShipped build 1.2.3')
   })
 
-  it('commits each change and keeps its own bookkeeping out of git', async () => {
+  it('commits each change', async () => {
     await overlay.ensure()
-    writeFileSync(join(overlay.dir, 'changes.json'), '[]')
-    mkdirSync(join(overlay.dir, 'attachments/a'), { recursive: true })
-    writeFileSync(join(overlay.dir, 'attachments/a/shot.png'), 'png')
     expect(await overlay.commit('Nothing yet')).toBeNull()
 
     writeFileSync(join(overlay.dir, 'build/app-web/assets/index.js'), 'console.log("changed")\n')

@@ -54,6 +54,7 @@ export function createNodeLocalHost(): LocalHost {
     },
 
     writeFile: (path, text) => writeFile(path, text),
+    writeBinary: (path, bytes) => writeFile(path, bytes),
     readFile: path => readFile(path, 'utf8').catch(() => null),
     makeDir: path => mkdir(path, { recursive: true }).then(() => undefined),
     remove: path => rm(path, { recursive: true, force: true }),

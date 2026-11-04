@@ -11,6 +11,7 @@ import { IconButton, WithTooltip } from '../components/ui/button'
 import { api } from '../lib/api'
 import { useChatAvailable } from '../lib/chat'
 import { useTheme } from '../lib/preferences'
+import { useRefreshSelfImprove, useSelfImproveState } from '../lib/self-improve'
 import { buildFeedbackContext } from './context'
 import { startPicker } from './picker'
 import { captureWindow } from './screenshot'
@@ -202,11 +203,11 @@ function Composer({ context, onClose, onSent }: { context: FeedbackContext, onCl
   )
 }
 
-function SentNotice() {
+function SentNotice({ onOpen }: { onOpen: () => void }) {
   return (
     <div {...{ [SELF_IMPROVE_UI_ATTRIBUTE]: '' }} role="status" className={css(floating, { display: 'flex', alignItems: 'center', gap: '3', px: '4', py: '2.5', borderRadius: 'xl' })}>
       <span className={css({ fontSize: 'sm', color: 'fg.default' })}>Sent to Claude. It runs one request at a time.</span>
-      <Link to={FEEDBACK_PATH} className={css({ fontSize: 'sm', fontWeight: 'medium', color: 'accent.fg', _hover: { textDecoration: 'underline' } })}>
+      <Link to={FEEDBACK_PATH} onClick={onOpen} className={css({ fontSize: 'sm', fontWeight: 'medium', color: 'accent.fg', _hover: { textDecoration: 'underline' } })}>
         See progress
       </Link>
     </div>
@@ -214,7 +215,10 @@ function SentNotice() {
 }
 
 export function SelfImproveProvider({ children }: { children: ReactNode }) {
-  const available = useChatAvailable()
+  const chatAvailable = useChatAvailable()
+  const state = useSelfImproveState()
+  const refresh = useRefreshSelfImprove()
+  const available = chatAvailable && state.isSuccess
   const [theme] = useTheme()
   const [mode, setMode] = useState<Mode>({ kind: 'idle' })
 
@@ -250,8 +254,17 @@ export function SelfImproveProvider({ children }: { children: ReactNode }) {
     <SelfImproveContext value={controls}>
       {children}
       {mode.kind === 'picking' && <PickBar onCancel={() => setMode({ kind: 'idle' })} />}
-      {mode.kind === 'composing' && <Composer context={mode.context} onClose={() => setMode({ kind: 'idle' })} onSent={() => setMode({ kind: 'sent' })} />}
-      {mode.kind === 'sent' && <SentNotice />}
+      {mode.kind === 'composing' && (
+        <Composer
+          context={mode.context}
+          onClose={() => setMode({ kind: 'idle' })}
+          onSent={() => {
+            setMode({ kind: 'sent' })
+            void refresh()
+          }}
+        />
+      )}
+      {mode.kind === 'sent' && <SentNotice onOpen={() => setMode({ kind: 'idle' })} />}
     </SelfImproveContext>
   )
 }

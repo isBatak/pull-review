@@ -20,7 +20,6 @@ export type RevertResult = { ok: true } | { ok: false, error: string }
 const SHIPPED_TAG = 'shipped'
 const ACTIVE_FILE = 'active'
 const OFF = 'off'
-const UNTRACKED = ['changes.json', 'attachments/']
 
 export type OverlayStore = ReturnType<typeof createOverlayStore>
 
@@ -58,7 +57,6 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     await tools.gitOk(['init', '--quiet', '-b', 'main'], staging)
     await tools.gitOk(['config', 'user.name', 'Pull Review'], staging)
     await tools.gitOk(['config', 'user.email', 'self-improve@pull-review.local'], staging)
-    await host.writeFile(`${staging}/.git/info/exclude`, `${UNTRACKED.join('\n')}\n`)
     await tools.gitOk(['add', 'build'], staging)
     await writeSourceTree(staging)
     await tools.gitOk(['add', '-A'], staging)
