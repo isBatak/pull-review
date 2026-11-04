@@ -4,6 +4,7 @@ import { CHECK_FOR_UPDATES_MENU_ID } from '../shared/updates'
 import { createApi } from '../server/api'
 import { createChatService } from '../server/chat/service'
 import { createGitTools } from '../server/local/git'
+import { lastLines } from '../server/local/host'
 import { createSelfImproveService } from '../server/self-improve/service'
 import { createTokenResolver } from '../server/token-core'
 import { createTinyLocalHost } from './local-host'
@@ -85,13 +86,33 @@ const localEnv = loginShellEnv.then((env) => {
 const host = createTinyLocalHost(() => localEnv)
 const chat = createChatService(host)
 
+const PROBE_TIMEOUT_MS = 30_000
+
+async function probeBackend(overlayDir: string) {
+  const script = `${host.cacheDir}/probe-backend-${crypto.randomUUID()}.js`
+  await host.makeDir(host.cacheDir)
+  await host.writeFile(script, [
+    `globalThis.__pullReviewOverlay = ${JSON.stringify(overlayDir)}`,
+    `await import(${JSON.stringify(`${overlayDir}/build/app-backend/main.js`)})`,
+    'tjs.exit(0)',
+    '',
+  ].join('\n'))
+  try {
+    const result = await host.run([tjs.exePath, 'run', script], { cwd: overlayDir, env: await localEnv, timeoutMs: PROBE_TIMEOUT_MS })
+    return result.code === 0 ? null : `The changed backend did not start:\n${lastLines(result.stderr) || `exit code ${result.code}`}`
+  }
+  finally {
+    await host.remove(script)
+  }
+}
+
 const shippedApp = packagedAppDir(tjs.exePath)
 const selfImprove = shippedApp
   ? createSelfImproveService(host, createGitTools(host), {
       root: `${tjs.homeDir}/${APP_OVERLAY_ROOT}`,
       version: __APP_VERSION__,
       parts: [{ name: 'app-web', from: `${shippedApp}/frontend` }, { name: 'app-backend', from: `${shippedApp}/src` }],
-    })
+    }, { probeBackend })
   : undefined
 
 const server = createApi({ resolveToken, chat, host, selfImprove })
@@ -135,6 +156,8 @@ export const api = {
 
 export function init(app: TinyApp) {
   app.setMenu([{ role: 'app', items: [{ id: CHECK_FOR_UPDATES_MENU_ID, label: 'Check for Updates…' }] }])
+  // Only the real app calls init, so the backend test load never picks up queued requests.
+  void selfImprove?.start()
 }
 
 const DEV_ORIGIN = 'http://127.0.0.1:5173'

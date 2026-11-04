@@ -34,6 +34,7 @@ export interface LocalHost {
   listDir: (path: string) => Promise<string[]>
   exists: (path: string) => Promise<boolean>
   isProcessAlive: (pid: number) => Promise<boolean>
+  checkModuleSyntax: (path: string) => Promise<string | null>
 }
 
 const FALLBACK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']

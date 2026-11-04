@@ -1,8 +1,8 @@
 import type { LocalHost } from './host'
 import { execFile, spawn } from 'node:child_process'
 import { closeSync, constants, openSync } from 'node:fs'
-import { access, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { access, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import process from 'node:process'
 import { createInterface } from 'node:readline'
 
@@ -67,6 +67,21 @@ export function createNodeLocalHost(): LocalHost {
       }
       catch (error) {
         return (error as NodeJS.ErrnoException).code === 'EPERM'
+      }
+    },
+
+    async checkModuleSyntax(path) {
+      // node --check reads .js as CommonJS outside a "type": "module" package, so check a .mjs copy.
+      const dir = await mkdtemp(`${tmpdir()}/pull-review-check-`)
+      try {
+        await copyFile(path, `${dir}/module.mjs`)
+        const result = await new Promise<string | null>((resolve) => {
+          execFile(process.execPath, ['--check', `${dir}/module.mjs`], { timeout: 30_000 }, (error, _stdout, stderr) => resolve(error ? String(stderr).trim() || error.message : null))
+        })
+        return result?.replaceAll(`${dir}/module.mjs`, path) ?? null
+      }
+      finally {
+        await rm(dir, { recursive: true, force: true })
       }
     },
   }

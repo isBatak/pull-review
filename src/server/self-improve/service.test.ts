@@ -28,7 +28,7 @@ describe('the self-improve service', () => {
     mkdirSync(join(root, 'shipped'))
     writeFileSync(join(root, 'shipped/index.html'), 'hi\n')
     const host = createNodeLocalHost()
-    service = createSelfImproveService(host, createGitTools(host), { root: join(root, 'overlay'), version: '1.2.3', parts: [{ name: 'app-web', from: join(root, 'shipped') }] })
+    service = createSelfImproveService(host, createGitTools(host), { root: join(root, 'overlay'), version: '1.2.3', parts: [{ name: 'app-web', from: join(root, 'shipped') }] }, { claudePath: Promise.resolve(null) })
   })
 
   afterEach(() => rmSync(root, { recursive: true, force: true }))
@@ -53,6 +53,7 @@ describe('the self-improve service', () => {
 
   it('dismisses only waiting or failed requests', async () => {
     const change = await service.create({ request: 'a', context })
+    await service.runQueue()
     expect(await service.dismiss(change.id)).toMatchObject({ status: 'dismissed' })
     await expect(service.dismiss(change.id)).rejects.toThrow(/Only waiting or failed/)
     await expect(service.dismiss('missing')).rejects.toThrow(/no longer exists/)

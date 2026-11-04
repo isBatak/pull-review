@@ -94,6 +94,7 @@ cli
       version: __APP_VERSION__,
       parts: [{ name: 'web', from: webRoot }, { name: 'cli.mjs', from: cliFile }, { name: 'cli.mjs.map', from: `${cliFile}.map` }],
     })
+    void selfImprove.start()
     const port = await listen({ webRoot, initialPath, cwd: process.cwd(), chat, host, selfImprove }, Number(flags.port))
     const url = `http://127.0.0.1:${port}${initialPath}`
     console.log(`\n  pull-review is running at ${url}\n  Press Ctrl+C to stop.\n`)

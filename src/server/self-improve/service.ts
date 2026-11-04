@@ -3,7 +3,9 @@ import type { GitTools } from '../local/git'
 import type { LocalHost } from '../local/host'
 import type { OverlayConfig } from './overlay'
 import { BOOT_FAILURE_FILE, OPEN_STATUSES, NEEDS_YOU_STATUSES, pngBytes } from '../../shared/self-improve'
+import { findClaude } from '../local/claude'
 import { createOverlayStore } from './overlay'
+import { createChangeRunner } from './runner'
 
 export const MAX_REQUEST_LENGTH = 4000
 
@@ -20,16 +22,26 @@ export interface NewChange {
 
 const DISMISSABLE = new Set([...OPEN_STATUSES, ...NEEDS_YOU_STATUSES])
 
+export interface SelfImproveOptions {
+  claudePath?: Promise<string | null>
+  probeBackend?: (overlayDir: string) => Promise<string | null>
+  timeoutMs?: number
+}
+
 export type SelfImproveService = ReturnType<typeof createSelfImproveService>
 
-export function createSelfImproveService(host: LocalHost, tools: GitTools, config: OverlayConfig) {
+export function createSelfImproveService(host: LocalHost, tools: GitTools, config: OverlayConfig, options: SelfImproveOptions = {}) {
   const overlay = createOverlayStore(host, tools, config)
   const changesFile = `${config.root}/changes.json`
   const bootFailureFile = `${config.root}/${BOOT_FAILURE_FILE}`
   let queue: Promise<unknown> = Promise.resolve()
 
+  function attachmentDir(id: string) {
+    return `${config.root}/attachments/${id}`
+  }
+
   function screenshotPath(id: string) {
-    return `${config.root}/attachments/${id}/screenshot.png`
+    return `${attachmentDir(id)}/screenshot.png`
   }
 
   async function readChanges(): Promise<LocalChange[]> {
@@ -73,7 +85,7 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       readBootFailure(),
       readChanges(),
     ])
-    return { active, overlayDir: exists ? overlay.dir : null, bootFailure, changes }
+    return { active, overlayDir: exists ? overlay.dir : null, bootFailure, changes, run: runner.progress() }
   }
 
   async function create({ request, context }: NewChange): Promise<LocalChange> {
@@ -85,7 +97,7 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     const id = crypto.randomUUID()
     const screenshot = context.screenshot ? pngBytes(context.screenshot) : null
     if (screenshot) {
-      await host.makeDir(`${config.root}/attachments/${id}`)
+      await host.makeDir(attachmentDir(id))
       await host.writeBinary(screenshotPath(id), screenshot)
     }
     const change: LocalChange = {
@@ -99,10 +111,12 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       startedAt: null,
       finishedAt: null,
       commits: [],
+      sessionId: null,
       summary: null,
       error: null,
     }
     await updateChanges(changes => changes.push(change))
+    void runner.kick()
     return change
   }
 
@@ -113,6 +127,8 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
         throw new SelfImproveError('This request no longer exists.', 404)
       if (!DISMISSABLE.has(change.status))
         throw new SelfImproveError('Only waiting or failed requests can be dismissed.', 409)
+      if (runner.stop(id))
+        return change
       change.status = 'dismissed'
       change.finishedAt = new Date().toISOString()
       return change
@@ -127,8 +143,24 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       await host.remove(bootFailureFile)
   }
 
+  const runner = createChangeRunner({
+    host,
+    overlay,
+    version: config.version,
+    parts: config.parts.map(part => part.name),
+    claudePath: options.claudePath ?? findClaude(host),
+    attachmentDir,
+    screenshotPath,
+    readChanges,
+    updateChanges,
+    probeBackend: options.probeBackend,
+    timeoutMs: options.timeoutMs,
+  })
+
   return {
     overlay,
+    start: runner.start,
+    runQueue: runner.kick,
     state,
     create,
     dismiss,

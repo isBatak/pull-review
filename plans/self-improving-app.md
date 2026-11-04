@@ -13,7 +13,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 5. Boot check and fallback: run a ready handshake, fall back to the shipped build on failure, and support ⌥ at launch.
 - [x] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
 - [x] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
-- [ ] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
+- [x] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
 - [ ] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
 - [ ] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
 - [ ] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
@@ -247,6 +247,18 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
   6. Boot check before the toast (see step 5): parse every changed `.js` in `build/`, and for backend changes import the overlay's `build/app-backend/main.js` in a separate `tjs run` process with `globalThis.__pullReviewOverlay` set, so a module that throws never reaches the app's own start.
 - Reply on a card: resume the same session (`--resume <id>`) as a new queued job, new commit on the same change.
 - Cancel a working job: kill the process, `git checkout -- . && git clean -fd` in the overlay.
+
+**Result (2026-11-04):**
+
+- `src/server/self-improve/runner.ts` (`createChangeRunner`), created inside the service. One request at a time, oldest first, only for the running version (older ones wait for step 12). A request that arrives while the loop is ending still gets picked up.
+- Each run: mark `working` with `startedAt` and a new `sessionId`, `overlay.ensure()`, drop leftover edits, write the prompt to `attachments/<id>/prompt.txt`, then `claude -p --output-format stream-json --verbose --include-partial-messages --permission-mode acceptEdits --append-system-prompt … --session-id … --add-dir attachments/<id>` in the overlay folder. The user's own Claude Code settings apply (full rights, as decided), and `acceptEdits` lets file edits through without a prompt. Runs stop after 30 minutes.
+- Prompts are in `src/shared/self-improve-prompt.ts` with tests. The system prompt explains `build/` and `source/` for the parts that shipped, `data-sourcery`, the Panda CSS rule, and the rules (edit both, no builds or commits, reply in one or two plain sentences, or ask one question and change nothing). The request prompt adds the page, window, theme, the picked element (source line, label, CSS path, size, text, computed styles, HTML) and the screenshot path.
+- After Claude finishes: no changed files means `needs-you`, with Claude's reply shown as a question. Otherwise each changed `build/**/*.js|mjs` gets a syntax check through the new `LocalHost.checkModuleSyntax` (`tjs compile <file> /dev/null` in the app; `node --check` on a `.mjs` copy in the CLI, since Node reads `.js` as CommonJS). A changed `build/app-backend/` file also gets a test load in a separate `tjs run` process (`probeBackend` in `src/tiny/app.ts`). Any problem drops the edits and sets `needs-you` with the reason. Otherwise: commit (title = first line of the request, body ends with `Request: <id>`), turn local changes on, and set `ready` with the summary and the commit hash.
+- The app starts the runner from `init()`, which only the real app calls, so the backend test load never picks up queued requests. The CLI calls `start()` before it listens. `start()` puts requests left `working` by a quit back in the queue.
+- Dismiss on a working request stops Claude, drops its edits and marks it `dismissed`. The card's button says Stop while it works. Live steps are kept in memory (`state.run`), not in `changes.json`, and the card shows them with the chat's `ThinkingTimeline` and `stepsFromTools`. A `needs-you` card shows Claude's question with a question icon, or the error.
+- `findClaude()` and `claudeEnv()` moved to `src/server/local/claude.ts` and are shared with the chat service.
+- Tests in `runner.test.ts` use a fake `claude` script: a committed change with the right arguments, a syntax error, a question, a crash, `claude` missing, Stop, and picking up after a quit. Found while testing: the service tests were starting the real `claude`, since `create()` now kicks the runner. They now pass `claudePath: null`.
+- End to end with the real `claude` through the CLI build: "Change the heading Pick a GitLab project to Choose a GitLab project" was done and committed. Claude changed both `build/web/assets/index-*.js` and `source/src/web/pages/home-page.tsx`, and its summary was plain. The working card with live steps has not been seen in a browser yet. Claude does not get one automatic retry after a failed check; the Retry button in step 10 covers it.
 
 ### Step 9. Reload toast
 

@@ -1,12 +1,14 @@
-import type { LocalChange } from '../../shared/self-improve'
+import type { ChangeRun, LocalChange } from '../../shared/self-improve'
 import { Popover } from '@ark-ui/react/popover'
 import { Portal } from '@ark-ui/react/portal'
-import { AlertTriangle, ArrowLeft, ArrowUp, CheckCircle2, ChevronRight, Circle, CircleDashed, GitCommitHorizontal, LoaderCircle, RotateCcw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowUp, CheckCircle2, ChevronRight, Circle, CircleDashed, GitCommitHorizontal, LoaderCircle, MessageCircleQuestion, RotateCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { css } from 'styled-system/css'
 import { badge } from 'styled-system/recipes'
+import { stepsFromTools } from '../../shared/thinking-steps'
 import { contextDetails, DONE_STATUSES, NEEDS_YOU_STATUSES, OPEN_STATUSES, requestTime, workingFor } from '../../shared/self-improve'
+import { ThinkingTimeline } from '../components/thinking-timeline'
 import { Button, WithTooltip } from '../components/ui/button'
 import { buildFeedbackContext } from '../feedback/context'
 import { SelfImproveButtons } from '../feedback/self-improve'
@@ -120,15 +122,24 @@ function StatusRow({ change, now }: { change: LocalChange, now: Date }) {
       </div>
     )
   }
+  if (!change.error && change.summary) {
+    return (
+      <div className={row}>
+        <MessageCircleQuestion className={css({ color: 'accent.fg' })} />
+        <span className={css({ color: 'fg.default', whiteSpace: 'pre-wrap' })}>{change.summary}</span>
+      </div>
+    )
+  }
   return (
     <div className={row}>
       <AlertTriangle className={css({ color: 'danger.fg' })} />
-      <span className={css({ color: 'fg.default', whiteSpace: 'pre-wrap' })}>{change.error ?? change.summary ?? 'Claude could not finish this request.'}</span>
+      <span className={css({ color: 'fg.default', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: change.error?.includes('\n') ? 'mono' : 'body', fontSize: change.error?.includes('\n') ? 'xs' : 'sm' })}>{change.error ?? 'Claude could not finish this request.'}</span>
     </div>
   )
 }
 
-function ChangeCard({ change, now, onDismiss }: { change: LocalChange, now: Date, onDismiss: () => void }) {
+function ChangeCard({ change, run, now, onDismiss }: { change: LocalChange, run: ChangeRun | null, now: Date, onDismiss: () => void }) {
+  const working = change.status === 'working'
   return (
     <article className={card}>
       <div className={css({ display: 'flex', gap: '3', px: '5', py: '4' })}>
@@ -139,11 +150,14 @@ function ChangeCard({ change, now, onDismiss }: { change: LocalChange, now: Date
         </div>
       </div>
       <StatusRow change={change} now={now} />
-      {change.status !== 'working' && (
-        <div className={css({ display: 'flex', justifyContent: 'flex-end', gap: '2', px: '5', py: '2.5', borderTopWidth: '1px', borderColor: 'border.default' })}>
-          <Button variant="ghost" size="md" onClick={onDismiss}>Dismiss</Button>
+      {working && run?.changeId === change.id && run.tools.length > 0 && (
+        <div className={css({ px: '5', pb: '3' })}>
+          <ThinkingTimeline steps={stepsFromTools(run.tools, 'the change')} outcome="running" startedAt={change.startedAt} />
         </div>
       )}
+      <div className={css({ display: 'flex', justifyContent: 'flex-end', gap: '2', px: '5', py: '2.5', borderTopWidth: '1px', borderColor: 'border.default' })}>
+        <Button variant="ghost" size="md" onClick={onDismiss}>{working ? 'Stop' : 'Dismiss'}</Button>
+      </div>
     </article>
   )
 }
@@ -301,7 +315,7 @@ export function FeedbackPage() {
               <span className={sectionCount}>{open.length}</span>
             </h2>
             <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
-              {open.map(change => <ChangeCard key={change.id} change={change} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
+              {open.map(change => <ChangeCard key={change.id} change={change} run={state.data?.run ?? null} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
             </div>
           </section>
         )}
@@ -312,7 +326,7 @@ export function FeedbackPage() {
               <span className={sectionCount}>{needsYou.length}</span>
             </h2>
             <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
-              {needsYou.map(change => <ChangeCard key={change.id} change={change} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
+              {needsYou.map(change => <ChangeCard key={change.id} change={change} run={null} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
             </div>
           </section>
         )}

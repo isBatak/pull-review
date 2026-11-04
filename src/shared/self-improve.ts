@@ -1,3 +1,5 @@
+import type { ChatToolUse } from './chat'
+
 export const APP_OVERLAY_ROOT = 'Library/Application Support/dev.pull-review.app/overlay'
 export const BOOT_FAILURE_FILE = 'boot-failure.json'
 export const BOOTING_FILE = 'booting'
@@ -164,8 +166,15 @@ export interface LocalChange {
   startedAt: string | null
   finishedAt: string | null
   commits: string[]
+  sessionId: string | null
   summary: string | null
   error: string | null
+}
+
+export interface ChangeRun {
+  changeId: string
+  text: string
+  tools: ChatToolUse[]
 }
 
 export interface SelfImproveState {
@@ -173,6 +182,7 @@ export interface SelfImproveState {
   overlayDir: string | null
   bootFailure: BootFailure | null
   changes: LocalChange[]
+  run: ChangeRun | null
 }
 
 export const OPEN_STATUSES: ChangeStatus[] = ['queued', 'working']
