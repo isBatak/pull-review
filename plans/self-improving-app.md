@@ -14,7 +14,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 6. Picker: add the header crosshair, pick mode with ⌥ measure, and the floating composer with the Context popover.
 - [x] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
 - [x] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
-- [ ] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
+- [x] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
 - [ ] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
 - [ ] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
 - [ ] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
@@ -266,6 +266,16 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
 - Web-only change: Reload swaps the page to the overlay (or reloads it) and keeps the current route.
 - Backend change (anything under `build/app-backend/`): the button says Restart and quits and relaunches the app, since the backend can't be swapped in place.
 - After the ready handshake, status becomes `applied`.
+
+**Result (2026-11-04):**
+
+- When to reload or restart: `reloadKind()` in `src/shared/self-improve.ts` (tested). No `ready` change means no toast. A restart is needed when a ready change touched the backend (`touchesBackend`, set by the runner for any changed `build/` file outside `app-web/` or `web/`), or when the running backend isn't the overlay. The second case covers the first local change, since the desktop app loads its backend only at start. Otherwise reloading the page is enough. Where the app can't restart itself (the CLI until step 13), the toast says to restart in the terminal. The service gets the running build from a `running()` option and puts `reload` in the state.
+- `ReloadToast` in `src/web/feedback/self-improve.tsx`, bottom right: "A new version of the app is ready" with Reload, Restart or the terminal hint, and Later. Later hides it until another change becomes ready.
+- Restart: a new `restartApp` bridge call in the loader (added to both origin lists, with a test). tinyjs has no relaunch, so it runs `sleep 1; open -n <bundle>` in the background and quits.
+- Applied and broken: the loader passes events to the app's own API through `app.api.request`. An accepted `bootReady` posts `/self-improve/applied`, which marks this version's `ready` changes `applied`. A boot failure, or a crash found at start, posts `/self-improve/broken` with the reason, which marks the newest `ready` change (or else the newest `applied` one) `broke-app`.
+- The boot watcher now also checks a reload of the changed page: a `start` event for the overlay page re-arms the 10 second timer.
+- Found while testing: tsdown never cleaned `out/app-backend`, so every build left its old hashed chunk there and the app shipped all of them. That folder is now cleaned on each build. The loader and the app now share a small `self-improve-*.js` chunk.
+- Checked end to end. In the CLI with a fake `claude` first on `PATH`: working card with Stop, then Done with the commit hash, then the toast with the terminal hint, then Later. In a packaged app: a ready change becomes `applied` after a good start; a broken page marks it `broke-app` ("did not start within 10 seconds") and turns local changes off; a backend that throws crashes once, then the next start marks the change `broke-app`. Not checked: clicking Reload or Restart in the app window, since the window can't be driven from a script.
 
 ### Step 10. Change actions
 

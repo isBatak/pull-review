@@ -181,7 +181,7 @@ function DoneRow({ change }: { change: LocalChange }) {
             </span>
           )
         : <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
-      <span className={css({ flexShrink: 0, w: '14', textAlign: 'right', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
+      <span className={css({ flexShrink: 0, minW: '14', textAlign: 'right', whiteSpace: 'nowrap', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
     </li>
   )
 }

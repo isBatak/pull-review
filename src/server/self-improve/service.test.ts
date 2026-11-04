@@ -59,8 +59,28 @@ describe('the self-improve service', () => {
     await expect(service.dismiss('missing')).rejects.toThrow(/no longer exists/)
   })
 
+  it('marks ready changes applied after a reload, and blames the newest one when the app breaks', async () => {
+    await service.create({ request: 'a', context })
+    const second = await service.create({ request: 'b', context })
+    const other = await service.create({ request: 'c', context })
+    await service.runQueue()
+    await service.updateChanges((changes) => {
+      for (const change of changes)
+        change.status = 'ready'
+      changes.find(change => change.id === other.id)!.version = '0.9.0'
+    })
+    expect((await service.state()).reload).toBe('restart-cli')
+
+    await service.markApplied()
+    const statuses = () => service.state().then(state => Object.fromEntries(state.changes.map(change => [change.request, change.status])))
+    expect(await statuses()).toEqual({ a: 'applied', b: 'applied', c: 'ready' })
+
+    expect(await service.markBroken('The page did not start.')).toMatchObject({ id: second.id, status: 'broke-app', error: 'The page did not start.' })
+    expect((await statuses()).a).toBe('applied')
+  })
+
   it('reports the overlay and a failed start, and turns local changes on only when they exist', async () => {
-    expect(await service.state()).toMatchObject({ active: false, overlayDir: null, bootFailure: null, changes: [] })
+    expect(await service.state()).toMatchObject({ active: false, overlayDir: null, bootFailure: null, changes: [], run: null, reload: null })
     await expect(service.setActive(true)).rejects.toThrow(/no local changes/)
 
     await service.overlay.ensure()

@@ -4,6 +4,7 @@ export const APP_OVERLAY_ROOT = 'Library/Application Support/dev.pull-review.app
 export const BOOT_FAILURE_FILE = 'boot-failure.json'
 export const BOOTING_FILE = 'booting'
 export const BOOT_READY_METHOD = 'bootReady'
+export const RESTART_APP_METHOD = 'restartApp'
 export const BOOT_TIMEOUT_MS = 10_000
 export const OPTION_KEY_FLAG = 0x80000
 export const SOURCE_ATTRIBUTE = 'data-sourcery'
@@ -17,9 +18,13 @@ export interface BootFailure {
 
 const PACKAGED_RUNTIME = /^(.*\.app)\/Contents\/MacOS\/[^/]+$/
 
+export function packagedBundle(exePath: string) {
+  return PACKAGED_RUNTIME.exec(exePath)?.[1] ?? null
+}
+
 export function packagedAppDir(exePath: string) {
-  const match = PACKAGED_RUNTIME.exec(exePath)
-  return match ? `${match[1]}/Contents/Resources/app` : null
+  const bundle = packagedBundle(exePath)
+  return bundle ? `${bundle}/Contents/Resources/app` : null
 }
 
 export function overlayPageUrl(overlayDir: string) {
@@ -56,6 +61,12 @@ export function createOverlayBoot({ overlayPage, timeoutMs = BOOT_TIMEOUT_MS, go
       goTo(shippedPage)
   }
 
+  function wait() {
+    state = 'loading'
+    clearTimeout(timer)
+    timer = setTimeout(() => fail(`The changed page did not start within ${Math.round(timeoutMs / 1000)} seconds.`), timeoutMs)
+  }
+
   function onNavigate({ kind, url, error }: PageNavigation) {
     if (state === 'failed' || !url?.startsWith('file:'))
       return
@@ -64,12 +75,14 @@ export function createOverlayBoot({ overlayPage, timeoutMs = BOOT_TIMEOUT_MS, go
       fail(error ? `The changed page did not load: ${error}` : 'The changed page did not load.')
       return
     }
+    if (isOverlay && state === 'ready' && kind === 'start') {
+      wait()
+      return
+    }
     if (isOverlay || kind !== 'finish')
       return
     shippedPage ??= url.split('#')[0] ?? url
-    state = 'loading'
-    clearTimeout(timer)
-    timer = setTimeout(() => fail(`The changed page did not start within ${Math.round(timeoutMs / 1000)} seconds.`), timeoutMs)
+    wait()
     goTo(overlayPage)
   }
 
@@ -160,6 +173,7 @@ export interface LocalChange {
   request: string
   context: FeedbackContext
   hasScreenshot: boolean
+  touchesBackend: boolean
   version: string
   status: ChangeStatus
   createdAt: string
@@ -183,6 +197,23 @@ export interface SelfImproveState {
   bootFailure: BootFailure | null
   changes: LocalChange[]
   run: ChangeRun | null
+  reload: ReloadKind | null
+}
+
+export type ReloadKind = 'reload' | 'restart' | 'restart-cli'
+
+export interface RunningBuild {
+  overlay: boolean
+  canRestart: boolean
+}
+
+export function reloadKind(changes: LocalChange[], running: RunningBuild): ReloadKind | null {
+  const ready = changes.filter(change => change.status === 'ready')
+  if (!ready.length)
+    return null
+  if (running.overlay && !ready.some(change => change.touchesBackend))
+    return 'reload'
+  return running.canRestart ? 'restart' : 'restart-cli'
 }
 
 export const OPEN_STATUSES: ChangeStatus[] = ['queued', 'working']

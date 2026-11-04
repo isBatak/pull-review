@@ -1,10 +1,14 @@
 import type * as AppModule from './app'
 import type { BootFailure, OverlayBoot, PageNavigation } from '../shared/self-improve'
-import { APP_OVERLAY_ROOT, BOOT_FAILURE_FILE, BOOTING_FILE, createOverlayBoot, OPTION_KEY_FLAG, overlayPageUrl, packagedAppDir } from '../shared/self-improve'
+import { APP_OVERLAY_ROOT, BOOT_FAILURE_FILE, BOOTING_FILE, createOverlayBoot, OPTION_KEY_FLAG, overlayPageUrl, packagedAppDir, packagedBundle } from '../shared/self-improve'
 
 const OVERLAY_ROOT = `${tjs.homeDir}/${APP_OVERLAY_ROOT}`
 const BOOTING_MARKER = `${OVERLAY_ROOT}/${BOOTING_FILE}`
 const MODIFIER_FLAGS_SCRIPT = 'ObjC.import("AppKit"); $.NSEvent.modifierFlags'
+
+const RESTART_DELAY_S = 1
+
+let startFailure: string | null = null
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -52,7 +56,8 @@ async function findActiveOverlay(): Promise<string | null> {
     return null
   }
   if (await exists(BOOTING_MARKER)) {
-    await turnOffOverlay('The app closed while it started the changed backend.')
+    startFailure = 'The app closed while it started the changed backend.'
+    await turnOffOverlay(startFailure)
     return null
   }
   return await isOptionKeyDown() ? null : `${OVERLAY_ROOT}/${__APP_VERSION__}`
@@ -81,23 +86,46 @@ async function loadApp(overlayDir: string | null): Promise<{ app: typeof AppModu
 
 const { app, overlayDir } = await loadApp(await findActiveOverlay())
 
+function report(action: 'applied' | 'broken', body?: unknown) {
+  return app.api.request({ method: 'POST', path: `/api/self-improve/${action}`, body: body === undefined ? undefined : JSON.stringify(body) }).catch(() => null)
+}
+
+if (startFailure)
+  void report('broken', { reason: startFailure })
+
 let boot: OverlayBoot | null = null
+let appWindow: TinyApp | null = null
 
 export const api = {
   ...app.api,
   bootReady({ url }: { url: string }) {
     boot?.ready(url)
+    if (boot?.state === 'ready')
+      void report('applied')
+    return true
+  },
+  restartApp() {
+    const bundle = packagedBundle(tjs.exePath)
+    if (!bundle || !appWindow)
+      return false
+    tjs.spawn(['/bin/sh', '-c', `sleep ${RESTART_DELAY_S}; exec /usr/bin/open -n "$0"`, bundle], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' })
+    const closing = appWindow
+    setTimeout(() => closing.quit(), 100)
     return true
   },
 }
 
 export function init(tinyApp: TinyApp) {
+  appWindow = tinyApp
   app.init(tinyApp)
   if (overlayDir) {
     boot = createOverlayBoot({
       overlayPage: overlayPageUrl(overlayDir),
       goTo: url => tinyApp.eval(`location.replace(${JSON.stringify(url)})`),
-      onFailure: reason => void turnOffOverlay(reason),
+      onFailure: (reason) => {
+        void turnOffOverlay(reason)
+        void report('broken', { reason })
+      },
     })
   }
 }

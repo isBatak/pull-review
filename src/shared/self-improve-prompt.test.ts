@@ -22,6 +22,7 @@ const change: LocalChange = {
     screenshot: null,
   },
   hasScreenshot: true,
+  touchesBackend: false,
   version: '1.0.0',
   status: 'queued',
   createdAt: '2026-11-04T10:00:00.000Z',

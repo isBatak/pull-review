@@ -9,7 +9,8 @@ import { claudeEnv } from '../local/claude'
 export const RUN_TIMEOUT_MS = 30 * 60_000
 
 const CHECKED_MODULE = /^build\/.+\.m?js$/
-const BACKEND_FILE = /^build\/app-backend\//
+const APP_BACKEND_FILE = /^build\/app-backend\//
+const PAGE_FILE = /^build\/(?:app-web|web)\//
 
 export interface ChangeRunnerOptions {
   host: LocalHost
@@ -71,7 +72,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
       if (problem)
         return `${file} has a syntax error:\n${problem}`
     }
-    if (options.probeBackend && files.some(file => BACKEND_FILE.test(file)))
+    if (options.probeBackend && files.some(file => APP_BACKEND_FILE.test(file)))
       return options.probeBackend(dir)
     return null
   }
@@ -142,7 +143,11 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
       }
       const sha = await overlay.commit(commitMessage(change))
       await overlay.setActive(true)
-      return await finish(change.id, 'ready', { summary, commits: sha ? [...change.commits, sha] : change.commits })
+      return await finish(change.id, 'ready', {
+        summary,
+        commits: sha ? [...change.commits, sha] : change.commits,
+        touchesBackend: change.touchesBackend || files.some(file => file.startsWith('build/') && !PAGE_FILE.test(file)),
+      })
     }
     catch (error) {
       await overlay.discard().catch(() => null)

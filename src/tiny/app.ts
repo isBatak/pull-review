@@ -112,7 +112,7 @@ const selfImprove = shippedApp
       root: `${tjs.homeDir}/${APP_OVERLAY_ROOT}`,
       version: __APP_VERSION__,
       parts: [{ name: 'app-web', from: `${shippedApp}/frontend` }, { name: 'app-backend', from: `${shippedApp}/src` }],
-    }, { probeBackend })
+    }, { probeBackend, running: () => ({ overlay: Boolean(globalThis.__pullReviewOverlay), canRestart: true }) })
   : undefined
 
 const server = createApi({ resolveToken, chat, host, selfImprove })

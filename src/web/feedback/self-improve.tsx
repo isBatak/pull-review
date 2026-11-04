@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
-import type { ContextDetail, FeedbackContext } from '../../shared/self-improve'
+import type { ContextDetail, FeedbackContext, ReloadKind } from '../../shared/self-improve'
 import { Popover } from '@ark-ui/react/popover'
 import { Portal } from '@ark-ui/react/portal'
-import { ArrowUp, ChevronRight, Crosshair, MessageSquare, Paperclip, X } from 'lucide-react'
+import { ArrowUp, ChevronRight, Crosshair, MessageSquare, Paperclip, Sparkles, X } from 'lucide-react'
 import { createContext, use, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { css } from 'styled-system/css'
-import { contextDetails, SELF_IMPROVE_UI_ATTRIBUTE, withoutDetails } from '../../shared/self-improve'
-import { IconButton, WithTooltip } from '../components/ui/button'
+import { contextDetails, RESTART_APP_METHOD, SELF_IMPROVE_UI_ATTRIBUTE, withoutDetails } from '../../shared/self-improve'
+import { Button, IconButton, WithTooltip } from '../components/ui/button'
 import { api } from '../lib/api'
 import { useChatAvailable } from '../lib/chat'
+import { callApp } from '../lib/platform'
 import { useTheme } from '../lib/preferences'
 import { useRefreshSelfImprove, useSelfImproveState } from '../lib/self-improve'
 import { buildFeedbackContext } from './context'
@@ -214,9 +215,37 @@ function SentNotice({ onOpen }: { onOpen: () => void }) {
   )
 }
 
+const RELOAD_HINTS: Record<ReloadKind, string> = {
+  'reload': 'Reload to get it.',
+  'restart': 'The app restarts to get it.',
+  'restart-cli': 'Stop pull-review in your terminal and start it again to get it.',
+}
+
+function ReloadToast({ kind, onLater }: { kind: ReloadKind, onLater: () => void }) {
+  return (
+    <div {...{ [SELF_IMPROVE_UI_ATTRIBUTE]: '' }} role="status" className={css({ position: 'fixed', right: '5', bottom: '5', zIndex: 'popover', display: 'flex', alignItems: 'center', gap: '4', maxW: '420px', pl: '4', pr: '2.5', py: '3', bg: 'bg.surface', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'xl', boxShadow: 'popover' })}>
+      <Sparkles className={css({ w: '4', h: '4', flexShrink: 0, color: 'accent.fg', alignSelf: 'flex-start', mt: '0.5' })} />
+      <div className={css({ flex: '1', minW: '0' })}>
+        <p className={css({ fontSize: 'sm', fontWeight: 'semibold', color: 'fg.default' })}>A new version of the app is ready</p>
+        <p className={css({ fontSize: 'xs', color: 'fg.subtle' })}>{RELOAD_HINTS[kind]}</p>
+      </div>
+      {kind !== 'restart-cli' && (
+        <Button variant="solid" size="md" onClick={() => kind === 'reload' ? location.reload() : void callApp(RESTART_APP_METHOD)}>
+          {kind === 'reload' ? 'Reload' : 'Restart'}
+        </Button>
+      )}
+      <IconButton label="Later" onClick={onLater}>
+        <X />
+      </IconButton>
+    </div>
+  )
+}
+
 export function SelfImproveProvider({ children }: { children: ReactNode }) {
   const chatAvailable = useChatAvailable()
   const state = useSelfImproveState()
+  const readyKey = state.data?.changes.filter(change => change.status === 'ready').map(change => change.id).join(',') ?? ''
+  const [laterKey, setLaterKey] = useState<string | null>(null)
   const refresh = useRefreshSelfImprove()
   const available = chatAvailable && state.isSuccess
   const [theme] = useTheme()
@@ -265,6 +294,7 @@ export function SelfImproveProvider({ children }: { children: ReactNode }) {
         />
       )}
       {mode.kind === 'sent' && <SentNotice onOpen={() => setMode({ kind: 'idle' })} />}
+      {state.data?.reload && readyKey !== laterKey && <ReloadToast kind={state.data.reload} onLater={() => setLaterKey(readyKey)} />}
     </SelfImproveContext>
   )
 }

@@ -24,6 +24,7 @@ interface TinyMenuItem {
 interface TinyApp {
   setMenu: (menus: Array<{ role: 'app', items: TinyMenuItem[] }>) => void
   eval: (js: string) => void
+  quit: () => void
 }
 
 declare var __pullReviewOverlay: string | undefined

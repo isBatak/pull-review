@@ -1,8 +1,8 @@
-import type { BootFailure, FeedbackContext, LocalChange, SelfImproveState } from '../../shared/self-improve'
+import type { BootFailure, FeedbackContext, LocalChange, RunningBuild, SelfImproveState } from '../../shared/self-improve'
 import type { GitTools } from '../local/git'
 import type { LocalHost } from '../local/host'
 import type { OverlayConfig } from './overlay'
-import { BOOT_FAILURE_FILE, OPEN_STATUSES, NEEDS_YOU_STATUSES, pngBytes } from '../../shared/self-improve'
+import { BOOT_FAILURE_FILE, NEEDS_YOU_STATUSES, OPEN_STATUSES, pngBytes, reloadKind } from '../../shared/self-improve'
 import { findClaude } from '../local/claude'
 import { createOverlayStore } from './overlay'
 import { createChangeRunner } from './runner'
@@ -25,6 +25,7 @@ const DISMISSABLE = new Set([...OPEN_STATUSES, ...NEEDS_YOU_STATUSES])
 export interface SelfImproveOptions {
   claudePath?: Promise<string | null>
   probeBackend?: (overlayDir: string) => Promise<string | null>
+  running?: () => RunningBuild
   timeoutMs?: number
 }
 
@@ -85,7 +86,8 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       readBootFailure(),
       readChanges(),
     ])
-    return { active, overlayDir: exists ? overlay.dir : null, bootFailure, changes, run: runner.progress() }
+    const running = options.running?.() ?? { overlay: false, canRestart: false }
+    return { active, overlayDir: exists ? overlay.dir : null, bootFailure, changes, run: runner.progress(), reload: reloadKind(changes, running) }
   }
 
   async function create({ request, context }: NewChange): Promise<LocalChange> {
@@ -105,6 +107,7 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       request: text,
       context: { ...context, screenshot: null },
       hasScreenshot: Boolean(screenshot),
+      touchesBackend: false,
       version: config.version,
       status: 'queued',
       createdAt: new Date().toISOString(),
@@ -132,6 +135,25 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       change.status = 'dismissed'
       change.finishedAt = new Date().toISOString()
       return change
+    })
+  }
+
+  function markApplied() {
+    return updateChanges((changes) => {
+      for (const change of changes) {
+        if (change.status === 'ready' && change.version === config.version)
+          change.status = 'applied'
+      }
+    })
+  }
+
+  function markBroken(reason: string) {
+    return updateChanges((changes) => {
+      const ours = changes.filter(change => change.version === config.version)
+      const culprit = ours.findLast(change => change.status === 'ready') ?? ours.findLast(change => change.status === 'applied')
+      if (culprit)
+        Object.assign(culprit, { status: 'broke-app', error: reason })
+      return culprit ?? null
     })
   }
 
@@ -164,6 +186,8 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     state,
     create,
     dismiss,
+    markApplied,
+    markBroken,
     setActive,
     updateChanges,
     screenshotPath,
