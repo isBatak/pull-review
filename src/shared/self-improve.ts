@@ -183,6 +183,28 @@ export interface LocalChange {
   sessionId: string | null
   summary: string | null
   error: string | null
+  needsReload: boolean
+  replies: ChangeReply[]
+  followUp: string | null
+}
+
+export interface ChangeReply {
+  text: string
+  at: string
+}
+
+export interface ChangeDiffFile {
+  commit: string
+  area: 'source' | 'build'
+  path: string
+  diff: string | null
+}
+
+export const NEW_CHANGE_FIELDS: Pick<LocalChange, 'touchesBackend' | 'needsReload' | 'replies' | 'followUp'> = {
+  touchesBackend: false,
+  needsReload: false,
+  replies: [],
+  followUp: null,
 }
 
 export interface ChangeRun {
@@ -208,7 +230,7 @@ export interface RunningBuild {
 }
 
 export function reloadKind(changes: LocalChange[], running: RunningBuild): ReloadKind | null {
-  const ready = changes.filter(change => change.status === 'ready')
+  const ready = changes.filter(change => change.needsReload)
   if (!ready.length)
     return null
   if (running.overlay && !ready.some(change => change.touchesBackend))

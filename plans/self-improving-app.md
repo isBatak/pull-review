@@ -15,7 +15,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 7. Feedback page: add `/feedback` with the request box and the Agent's turn, Needs you and Done lists.
 - [x] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
 - [x] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
-- [ ] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
+- [x] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
 - [ ] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
 - [ ] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
 - [ ] 13. CLI: give the CLI its own overlay and the same Feedback flow.
@@ -283,6 +283,17 @@ New route `/feedback` in `src/web/main.tsx`, page `src/web/pages/feedback-page.t
 - **Undo**: revert, then the reload toast.
 - **Retry** for needs-you and broke-app: queue the same request again with the error added.
 - **Dismiss**: drop a queued or failed change without touching the code.
+
+**Result (2026-11-04):**
+
+- New change fields: `needsReload`, `replies` (`{ text, at }`) and `followUp`. Entries saved before these existed get defaults when read (`NEW_CHANGE_FIELDS`). The reload toast now depends on `needsReload`, not on status `ready`, so an undo asks for a reload too. A start of the changed page clears it.
+- **Reply** (`POST /self-improve/changes/:id/reply`): for done, question, failed and broken changes of this version. It queues the change again with the reply as `followUp`. The runner resumes the same Claude session (`--resume <sessionId>`) with `buildFollowUpPrompt()`, which tells Claude to look at the files again, and adds a new commit to the same change. A follow-up with no session to resume gets the full prompt plus the reply.
+- **Retry** (`/retry`): only for `needs-you`, in a fresh session.
+- **Undo** (`/undo`): `git revert` of all the change's commits, newest first. It refuses while Claude is working, and says "A later change builds on this one. Undo the later change first." when the revert conflicts. Undoing a `broke-app` change turns local changes back on and clears the boot failure.
+- **View diff** (`GET /diff`): `git show` of each commit, limited to `source/` and `build/`, split with `splitPatchByFile`. Shown with `PatchFileCard`: source files first, built files behind "Show the built files (N)", and anything over 100,000 characters replaced by a note. A change with no source edits says it can't become a pull request yet.
+- UI (`src/web/feedback/change-actions.tsx`, `src/web/pages/feedback-page.tsx`): question and failed cards get a reply box, failed ones also "Try again". Broken ones get "Ask Claude to fix it" (a reply with the error filled in) and Undo. Done rows open into Claude's summary, the reply thread, a follow-up box, View diff and Undo. Errors from these actions show under the card. A question card shows a question icon, not a warning.
+- Changes made on another version answer 409 for these actions until step 12 moves them over.
+- Tests: reply resumes the session and adds a commit, retry gets a new session, undo with and without a later change, the diff split, applied marking based on `needsReload`. Checked in a headless browser with the CLI and a fake `claude`: expand, View diff, reply (second commit), a question card, Undo of both commits, then the reload toast. "Mark done" from the reference isn't added, since Dismiss covers it.
 
 ### Step 11. Send as PR
 

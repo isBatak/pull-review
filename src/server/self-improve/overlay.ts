@@ -107,6 +107,10 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     return { ok: false, error: result.stderr.trim() || result.stdout.trim() }
   }
 
+  function commitDiff(sha: string) {
+    return tools.gitOk(['show', '--format=', '--no-color', '--no-ext-diff', sha, '--', 'source', 'build'], dir)
+  }
+
   async function discard() {
     await tools.gitOk(['reset', '--quiet', '--hard', 'HEAD'], dir)
     await tools.gitOk(['clean', '-fdq'], dir)
@@ -117,5 +121,5 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     await tools.gitOk(['clean', '-fdq'], dir)
   }
 
-  return { dir, ensure, isActive, setActive, changedFiles, commit, revert, discard, reset }
+  return { dir, ensure, isActive, setActive, changedFiles, commit, commitDiff, revert, discard, reset }
 }

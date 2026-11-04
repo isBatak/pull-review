@@ -1,6 +1,6 @@
 import type { LocalChange } from './self-improve'
 import { describe, expect, it } from 'vitest'
-import { buildChangePrompt, buildChangeSystemPrompt } from './self-improve-prompt'
+import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt } from './self-improve-prompt'
 
 const change: LocalChange = {
   id: 'a',
@@ -32,6 +32,9 @@ const change: LocalChange = {
   sessionId: null,
   summary: null,
   error: null,
+  needsReload: false,
+  replies: [],
+  followUp: null,
 }
 
 describe('the change prompt', () => {
@@ -57,5 +60,11 @@ describe('the change prompt', () => {
   it('leaves out what the user removed', () => {
     const prompt = buildChangePrompt({ ...change, context: { ...change.context, page: null, viewport: null, theme: null, element: null } }, null)
     expect(prompt).toBe('Request: Remove the gap under the version badge')
+  })
+
+  it('passes a reply on with a reminder to look again', () => {
+    const prompt = buildFollowUpPrompt('Make it a bit smaller')
+    expect(prompt).toMatch(/^The user replied about this request:\n\nMake it a bit smaller\n\n/)
+    expect(prompt).toContain('look at the files again')
   })
 })

@@ -153,19 +153,19 @@ describe('request times', () => {
 })
 
 describe('reloading after a change', () => {
-  const change = (status: LocalChange['status'], touchesBackend = false) => ({ status, touchesBackend }) as LocalChange
+  const change = (needsReload: boolean, touchesBackend = false) => ({ needsReload, touchesBackend }) as LocalChange
 
-  it('asks for nothing until a change is ready', () => {
-    expect(reloadKind([change('applied'), change('queued')], { overlay: true, canRestart: true })).toBeNull()
+  it('asks for nothing until a change or an undo waits to load', () => {
+    expect(reloadKind([change(false), change(false, true)], { overlay: true, canRestart: true })).toBeNull()
   })
 
   it('reloads the page when only the page changed and the changes are already loaded', () => {
-    expect(reloadKind([change('ready')], { overlay: true, canRestart: true })).toBe('reload')
+    expect(reloadKind([change(true)], { overlay: true, canRestart: true })).toBe('reload')
   })
 
   it('restarts for a backend change or the first local change', () => {
-    expect(reloadKind([change('ready'), change('ready', true)], { overlay: true, canRestart: true })).toBe('restart')
-    expect(reloadKind([change('ready')], { overlay: false, canRestart: true })).toBe('restart')
-    expect(reloadKind([change('ready')], { overlay: false, canRestart: false })).toBe('restart-cli')
+    expect(reloadKind([change(true), change(true, true)], { overlay: true, canRestart: true })).toBe('restart')
+    expect(reloadKind([change(true)], { overlay: false, canRestart: true })).toBe('restart')
+    expect(reloadKind([change(true)], { overlay: false, canRestart: false })).toBe('restart-cli')
   })
 })

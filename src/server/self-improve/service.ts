@@ -1,13 +1,15 @@
-import type { BootFailure, FeedbackContext, LocalChange, RunningBuild, SelfImproveState } from '../../shared/self-improve'
+import type { BootFailure, ChangeDiffFile, ChangeStatus, FeedbackContext, LocalChange, RunningBuild, SelfImproveState } from '../../shared/self-improve'
 import type { GitTools } from '../local/git'
 import type { LocalHost } from '../local/host'
 import type { OverlayConfig } from './overlay'
-import { BOOT_FAILURE_FILE, NEEDS_YOU_STATUSES, OPEN_STATUSES, pngBytes, reloadKind } from '../../shared/self-improve'
+import { BOOT_FAILURE_FILE, NEEDS_YOU_STATUSES, NEW_CHANGE_FIELDS, OPEN_STATUSES, pngBytes, reloadKind } from '../../shared/self-improve'
+import { splitPatchByFile } from '../local/changes'
 import { findClaude } from '../local/claude'
 import { createOverlayStore } from './overlay'
 import { createChangeRunner } from './runner'
 
 export const MAX_REQUEST_LENGTH = 4000
+export const MAX_SHOWN_DIFF_LENGTH = 100_000
 
 export class SelfImproveError extends Error {
   constructor(message: string, public status: 400 | 404 | 409 = 400) {
@@ -21,6 +23,8 @@ export interface NewChange {
 }
 
 const DISMISSABLE = new Set([...OPEN_STATUSES, ...NEEDS_YOU_STATUSES])
+const REPLYABLE = new Set<ChangeStatus>([...NEEDS_YOU_STATUSES, 'ready', 'applied'])
+const UNDOABLE = new Set<ChangeStatus>(['ready', 'applied', 'broke-app'])
 
 export interface SelfImproveOptions {
   claudePath?: Promise<string | null>
@@ -50,7 +54,7 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     if (!text)
       return []
     try {
-      return JSON.parse(text) as LocalChange[]
+      return (JSON.parse(text) as LocalChange[]).map(change => ({ ...NEW_CHANGE_FIELDS, ...change }))
     }
     catch {
       return []
@@ -107,7 +111,6 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       request: text,
       context: { ...context, screenshot: null },
       hasScreenshot: Boolean(screenshot),
-      touchesBackend: false,
       version: config.version,
       status: 'queued',
       createdAt: new Date().toISOString(),
@@ -117,6 +120,7 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       sessionId: null,
       summary: null,
       error: null,
+      ...NEW_CHANGE_FIELDS,
     }
     await updateChanges(changes => changes.push(change))
     void runner.kick()
@@ -138,10 +142,89 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     })
   }
 
+  function requireText(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed)
+      throw new SelfImproveError('Write a reply first.')
+    if (trimmed.length > MAX_REQUEST_LENGTH)
+      throw new SelfImproveError(`Keep the reply under ${MAX_REQUEST_LENGTH} characters.`)
+    return trimmed
+  }
+
+  function findChange(changes: LocalChange[], id: string) {
+    const change = changes.find(item => item.id === id)
+    if (!change)
+      throw new SelfImproveError('This request no longer exists.', 404)
+    if (change.version !== config.version)
+      throw new SelfImproveError(`This request was made on version ${change.version}. It moves to this version when the app updates its local changes.`, 409)
+    return change
+  }
+
+  async function reply(id: string, text: string) {
+    const reply = requireText(text)
+    const change = await updateChanges((changes) => {
+      const change = findChange(changes, id)
+      if (!REPLYABLE.has(change.status))
+        throw new SelfImproveError('You can reply once Claude has finished.', 409)
+      change.replies.push({ text: reply, at: new Date().toISOString() })
+      Object.assign(change, { followUp: reply, status: 'queued', error: null })
+      return change
+    })
+    void runner.kick()
+    return change
+  }
+
+  async function retry(id: string) {
+    const change = await updateChanges((changes) => {
+      const change = findChange(changes, id)
+      if (change.status !== 'needs-you')
+        throw new SelfImproveError('Only requests that need you can be tried again.', 409)
+      Object.assign(change, { status: 'queued', sessionId: null, followUp: null, summary: null, error: null })
+      return change
+    })
+    void runner.kick()
+    return change
+  }
+
+  async function undo(id: string) {
+    if (runner.busy())
+      throw new SelfImproveError('Wait until Claude finishes the current request, then undo.', 409)
+    const change = findChange(await readChanges(), id)
+    if (!UNDOABLE.has(change.status) || !change.commits.length)
+      throw new SelfImproveError('Only finished changes can be undone.', 409)
+    const result = await overlay.revert(change.commits)
+    if (!result.ok)
+      throw new SelfImproveError('A later change builds on this one. Undo the later change first.', 409)
+    if (change.status === 'broke-app') {
+      await overlay.setActive(true)
+      await host.remove(bootFailureFile)
+    }
+    return updateChanges((changes) => {
+      const current = findChange(changes, id)
+      Object.assign(current, { status: 'undone', needsReload: true, error: null, finishedAt: new Date().toISOString() })
+      return current
+    })
+  }
+
+  async function diff(id: string): Promise<ChangeDiffFile[]> {
+    const change = findChange(await readChanges(), id)
+    const files: ChangeDiffFile[] = []
+    for (const commit of change.commits) {
+      for (const [path, patch] of splitPatchByFile(await overlay.commitDiff(commit))) {
+        const area = path.startsWith('source/') ? 'source' : 'build'
+        files.push({ commit, area, path: path.replace(/^(?:source|build)\//, ''), diff: patch.length > MAX_SHOWN_DIFF_LENGTH ? null : patch })
+      }
+    }
+    return files
+  }
+
   function markApplied() {
     return updateChanges((changes) => {
       for (const change of changes) {
-        if (change.status === 'ready' && change.version === config.version)
+        if (!change.needsReload || change.version !== config.version)
+          continue
+        change.needsReload = false
+        if (change.status === 'ready')
           change.status = 'applied'
       }
     })
@@ -186,6 +269,10 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     state,
     create,
     dismiss,
+    reply,
+    retry,
+    undo,
+    diff,
     markApplied,
     markBroken,
     setActive,

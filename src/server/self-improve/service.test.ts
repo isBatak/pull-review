@@ -66,7 +66,7 @@ describe('the self-improve service', () => {
     await service.runQueue()
     await service.updateChanges((changes) => {
       for (const change of changes)
-        change.status = 'ready'
+        Object.assign(change, { status: 'ready', needsReload: true })
       changes.find(change => change.id === other.id)!.version = '0.9.0'
     })
     expect((await service.state()).reload).toBe('restart-cli')

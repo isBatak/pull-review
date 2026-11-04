@@ -20,6 +20,16 @@ export function registerSelfImproveRoutes<E extends Env>(api: Hono<E>, service: 
   })
 
   api.post('/self-improve/changes/:id/dismiss', async c => c.json(await selfImprove().dismiss(c.req.param('id'))))
+  api.post('/self-improve/changes/:id/retry', async c => c.json(await selfImprove().retry(c.req.param('id'))))
+  api.post('/self-improve/changes/:id/undo', async c => c.json(await selfImprove().undo(c.req.param('id'))))
+  api.get('/self-improve/changes/:id/diff', async c => c.json(await selfImprove().diff(c.req.param('id'))))
+
+  api.post('/self-improve/changes/:id/reply', async (c) => {
+    const { text } = await c.req.json<{ text: unknown }>()
+    if (typeof text !== 'string')
+      return c.json({ error: 'Expected text' }, 400)
+    return c.json(await selfImprove().reply(c.req.param('id'), text))
+  })
 
   api.post('/self-improve/applied', async (c) => {
     await selfImprove().markApplied()

@@ -2,7 +2,7 @@ import type { ChatMessage } from '../../shared/chat'
 import type { ChangeRun, ChangeStatus, LocalChange } from '../../shared/self-improve'
 import type { LocalHost, StreamedProcess } from '../local/host'
 import type { OverlayStore } from './overlay'
-import { buildChangePrompt, buildChangeSystemPrompt } from '../../shared/self-improve-prompt'
+import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt } from '../../shared/self-improve-prompt'
 import { applyStreamLine, explainExit } from '../chat/claude-events'
 import { claudeEnv } from '../local/claude'
 
@@ -61,7 +61,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
   }
 
   function finish(id: string, status: ChangeStatus, fields: Partial<LocalChange> = {}) {
-    return patch(id, { error: null, ...fields, status, finishedAt: new Date().toISOString() })
+    return patch(id, { error: null, followUp: null, ...fields, status, finishedAt: new Date().toISOString() })
   }
 
   async function check(dir: string, files: string[]): Promise<string | null> {
@@ -77,8 +77,16 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
     return null
   }
 
+  function promptFor(change: LocalChange, resume: boolean) {
+    if (resume)
+      return buildFollowUpPrompt(change.followUp!)
+    const prompt = buildChangePrompt(change, change.hasScreenshot ? options.screenshotPath(change.id) : null)
+    return change.followUp ? `${prompt}\n\n${buildFollowUpPrompt(change.followUp)}` : prompt
+  }
+
   async function run(change: LocalChange) {
-    const sessionId = crypto.randomUUID()
+    const resume = Boolean(change.followUp && change.sessionId)
+    const sessionId = resume ? change.sessionId! : crypto.randomUUID()
     const message: ChatMessage = { id: change.id, role: 'assistant', text: '', contexts: [], tools: [], status: 'streaming', error: null }
     const run: CurrentRun = { changeId: change.id, message, process: null, stopped: false }
     current = run
@@ -91,9 +99,8 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
 
       const dir = await overlay.ensure()
       await overlay.discard()
-      const screenshot = change.hasScreenshot ? options.screenshotPath(change.id) : null
       await host.makeDir(options.attachmentDir(change.id))
-      await host.writeFile(promptFile, buildChangePrompt(change, screenshot))
+      await host.writeFile(promptFile, promptFor(change, resume))
 
       let finished = false
       const process = host.stream([
@@ -107,8 +114,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
         'acceptEdits',
         '--append-system-prompt',
         buildChangeSystemPrompt(options.parts),
-        '--session-id',
-        sessionId,
+        ...(resume ? ['--resume', sessionId] : ['--session-id', sessionId]),
         '--add-dir',
         options.attachmentDir(change.id),
       ], {
@@ -145,6 +151,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
       await overlay.setActive(true)
       return await finish(change.id, 'ready', {
         summary,
+        needsReload: true,
         commits: sha ? [...change.commits, sha] : change.commits,
         touchesBackend: change.touchesBackend || files.some(file => file.startsWith('build/') && !PAGE_FILE.test(file)),
       })
@@ -203,5 +210,5 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
     return current ? { changeId: current.changeId, text: current.message.text, tools: current.message.tools } : null
   }
 
-  return { kick, start, stop, progress }
+  return { kick, start, stop, progress, busy: () => current !== null }
 }

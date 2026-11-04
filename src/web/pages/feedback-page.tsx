@@ -1,4 +1,5 @@
 import type { ChangeRun, LocalChange } from '../../shared/self-improve'
+import type { RunAction } from '../feedback/change-actions'
 import { Popover } from '@ark-ui/react/popover'
 import { Portal } from '@ark-ui/react/portal'
 import { AlertTriangle, ArrowLeft, ArrowUp, CheckCircle2, ChevronRight, Circle, CircleDashed, GitCommitHorizontal, LoaderCircle, MessageCircleQuestion, RotateCcw } from 'lucide-react'
@@ -10,6 +11,7 @@ import { stepsFromTools } from '../../shared/thinking-steps'
 import { contextDetails, DONE_STATUSES, NEEDS_YOU_STATUSES, OPEN_STATUSES, requestTime, workingFor } from '../../shared/self-improve'
 import { ThinkingTimeline } from '../components/thinking-timeline'
 import { Button, WithTooltip } from '../components/ui/button'
+import { ActionError, ChangeDiff, Replies, ReplyBox } from '../feedback/change-actions'
 import { buildFeedbackContext } from '../feedback/context'
 import { SelfImproveButtons } from '../feedback/self-improve'
 import { api } from '../lib/api'
@@ -93,6 +95,8 @@ const statusIcon = css.raw({ w: '5', h: '5', flexShrink: 0, mt: '0.5' })
 function StatusIcon({ change }: { change: LocalChange }) {
   if (change.status === 'working')
     return <LoaderCircle className={css(statusIcon, { color: 'warning.fg', animation: 'spin' })} aria-label="Working" />
+  if (change.status === 'needs-you' && !change.error && change.summary)
+    return <MessageCircleQuestion className={css(statusIcon, { color: 'accent.fg' })} aria-label="Claude has a question" />
   if (NEEDS_YOU_STATUSES.includes(change.status))
     return <AlertTriangle className={css(statusIcon, { color: 'danger.fg' })} aria-label="Needs you" />
   return <Circle className={css(statusIcon, { color: 'fg.subtle' })} aria-label="Waiting" />
@@ -138,8 +142,16 @@ function StatusRow({ change, now }: { change: LocalChange, now: Date }) {
   )
 }
 
-function ChangeCard({ change, run, now, onDismiss }: { change: LocalChange, run: ChangeRun | null, now: Date, onDismiss: () => void }) {
+function ChangeCard({ change, run, now, act }: { change: LocalChange, run: ChangeRun | null, now: Date, act: RunAction }) {
+  const [error, setError] = useState<string | null>(null)
   const working = change.status === 'working'
+  const replyable = NEEDS_YOU_STATUSES.includes(change.status)
+  const id = change.id
+
+  async function perform(action: () => Promise<unknown>) {
+    setError(await act(action))
+  }
+
   return (
     <article className={card}>
       <div className={css({ display: 'flex', gap: '3', px: '5', py: '4' })}>
@@ -147,41 +159,85 @@ function ChangeCard({ change, run, now, onDismiss }: { change: LocalChange, run:
         <div className={css({ minW: '0', flex: '1' })}>
           <p className={css({ fontSize: 'md', color: 'fg.default', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>{change.request}</p>
           <ChangeMeta change={change} />
+          <Replies change={change} />
         </div>
       </div>
       <StatusRow change={change} now={now} />
-      {working && run?.changeId === change.id && run.tools.length > 0 && (
+      {working && run?.changeId === id && run.tools.length > 0 && (
         <div className={css({ px: '5', pb: '3' })}>
           <ThinkingTimeline steps={stepsFromTools(run.tools, 'the change')} outcome="running" startedAt={change.startedAt} />
         </div>
       )}
-      <div className={css({ display: 'flex', justifyContent: 'flex-end', gap: '2', px: '5', py: '2.5', borderTopWidth: '1px', borderColor: 'border.default' })}>
-        <Button variant="ghost" size="md" onClick={onDismiss}>{working ? 'Stop' : 'Dismiss'}</Button>
+      <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2', px: '5', py: '2', borderTopWidth: '1px', borderColor: 'border.default' })}>
+        {replyable && <ReplyBox onSend={text => act(() => api.replyToChange(id, text))} />}
+        {change.status === 'needs-you' && change.error && <Button variant="ghost" size="md" onClick={() => void perform(() => api.retryChange(id))}>Try again</Button>}
+        {change.status === 'broke-app' && (
+          <>
+            <Button variant="ghost" size="md" onClick={() => void perform(() => api.replyToChange(id, `The app broke after this change: ${change.error ?? 'it did not start'}. Please fix it.`))}>Ask Claude to fix it</Button>
+            <Button variant="ghost" size="md" onClick={() => void perform(() => api.undoChange(id))}>Undo</Button>
+          </>
+        )}
+        {change.status !== 'broke-app' && <Button variant="ghost" size="md" onClick={() => void perform(() => api.dismissChange(id))}>{working ? 'Stop' : 'Dismiss'}</Button>}
       </div>
+      {error && (
+        <div className={css({ px: '5', pb: '3' })}>
+          <ActionError message={error} />
+        </div>
+      )}
     </article>
   )
 }
 
-function DoneRow({ change }: { change: LocalChange }) {
+function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
+  const [open, setOpen] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const commit = change.commits.at(-1)
   const undone = change.status === 'undone'
+
   return (
-    <li className={css({ display: 'flex', alignItems: 'center', gap: '3', px: '5', py: '3.5', borderTopWidth: '1px', borderColor: 'border.default', _first: { borderTopWidth: '0' } })}>
-      {undone
-        ? <RotateCcw className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'fg.subtle' })} aria-label="Undone" />
-        : <CheckCircle2 className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'success.fg' })} aria-label="Done" />}
-      <WithTooltip label={change.summary ?? change.request} contentStyle={{ maxW: '96', whiteSpace: 'pre-wrap' }}>
+    <li className={css({ borderTopWidth: '1px', borderColor: 'border.default', _first: { borderTopWidth: '0' } })}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+        className={css({ display: 'flex', alignItems: 'center', gap: '3', w: 'full', px: '5', py: '3.5', textAlign: 'left', cursor: 'pointer', _hover: { bg: 'bg.subtle' } })}
+      >
+        {undone
+          ? <RotateCcw className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'fg.subtle' })} aria-label="Undone" />
+          : <CheckCircle2 className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'success.fg' })} aria-label="Done" />}
         <span className={css({ flex: '1', minW: '0', truncate: true, fontSize: 'sm', color: undone ? 'fg.subtle' : 'fg.default', textDecoration: undone ? 'line-through' : 'none' })}>{change.request}</span>
-      </WithTooltip>
-      {commit
-        ? (
-            <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', flexShrink: 0, h: '6', px: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'full', fontFamily: 'mono', fontSize: 'xs', color: 'fg.muted', '& svg': { w: '3.5', h: '3.5', color: 'accent.fg' } })}>
-              <GitCommitHorizontal />
-              {commit.slice(0, 7)}
-            </span>
-          )
-        : <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
-      <span className={css({ flexShrink: 0, minW: '14', textAlign: 'right', whiteSpace: 'nowrap', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
+        {commit && !undone
+          ? (
+              <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', flexShrink: 0, h: '6', px: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'full', fontFamily: 'mono', fontSize: 'xs', color: 'fg.muted', '& svg': { w: '3.5', h: '3.5', color: 'accent.fg' } })}>
+                <GitCommitHorizontal />
+                {commit.slice(0, 7)}
+              </span>
+            )
+          : <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
+        <span className={css({ flexShrink: 0, minW: '14', textAlign: 'right', whiteSpace: 'nowrap', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
+      </button>
+      {open && (
+        <div className={css({ display: 'flex', flexDir: 'column', gap: '3', px: '5', pb: '4', pl: '12' })}>
+          {change.request.length > 80 && <p className={css({ fontSize: 'sm', color: 'fg.default', whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>{change.request}</p>}
+          {change.summary && (
+            <p className={css({ fontSize: 'sm', color: 'fg.muted', whiteSpace: 'pre-wrap' })}>
+              <span className={css({ fontWeight: 'semibold', color: 'fg.default' })}>Claude: </span>
+              {change.summary}
+            </p>
+          )}
+          <Replies change={change} />
+          {!undone && (
+            <div className={css({ display: 'flex', alignItems: 'center', gap: '2' })}>
+              <ReplyBox placeholder="Ask for a follow-up change…" onSend={text => act(() => api.replyToChange(change.id, text))} />
+              <Button variant="ghost" size="md" onClick={() => setShowDiff(value => !value)}>{showDiff ? 'Hide diff' : 'View diff'}</Button>
+              <Button variant="ghost" size="md" onClick={() => void act(() => api.undoChange(change.id)).then(setError)}>Undo</Button>
+            </div>
+          )}
+          <ActionError message={error} />
+          {showDiff && !undone && <ChangeDiff change={change} />}
+        </div>
+      )}
     </li>
   )
 }
@@ -276,9 +332,17 @@ export function FeedbackPage() {
     document.title = 'Feedback'
   }, [])
 
-  async function act(action: () => Promise<unknown>) {
-    await action().catch(() => null)
-    await refresh()
+  const act: RunAction = async (action) => {
+    try {
+      await action()
+      return null
+    }
+    catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      await refresh()
+    }
   }
 
   const total = open.length + needsYou.length + done.length
@@ -315,7 +379,7 @@ export function FeedbackPage() {
               <span className={sectionCount}>{open.length}</span>
             </h2>
             <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
-              {open.map(change => <ChangeCard key={change.id} change={change} run={state.data?.run ?? null} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
+              {open.map(change => <ChangeCard key={change.id} change={change} run={state.data?.run ?? null} now={now} act={act} />)}
             </div>
           </section>
         )}
@@ -326,7 +390,7 @@ export function FeedbackPage() {
               <span className={sectionCount}>{needsYou.length}</span>
             </h2>
             <div className={css({ display: 'flex', flexDir: 'column', gap: '3' })}>
-              {needsYou.map(change => <ChangeCard key={change.id} change={change} run={null} now={now} onDismiss={() => void act(() => api.dismissChange(change.id))} />)}
+              {needsYou.map(change => <ChangeCard key={change.id} change={change} run={null} now={now} act={act} />)}
             </div>
           </section>
         )}
@@ -337,7 +401,7 @@ export function FeedbackPage() {
               <span className={sectionCount}>{done.length}</span>
             </h2>
             <ul className={card}>
-              {done.slice(0, doneShown).map(change => <DoneRow key={change.id} change={change} />)}
+              {done.slice(0, doneShown).map(change => <DoneRow key={change.id} change={change} act={act} />)}
             </ul>
             {done.length > doneShown && (
               <div className={css({ display: 'flex', justifyContent: 'center', mt: '4' })}>

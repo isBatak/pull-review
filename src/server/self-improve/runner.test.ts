@@ -18,6 +18,7 @@ case "$prompt" in
   *"Break the script"*) printf 'export const a = (\\n' > build/web/assets/index.js; result "Done." ;;
   *"Ask me"*) result "Which button do you mean?" ;;
   *"Crash"*) echo boom >&2; exit 3 ;;
+  *"Make it bigger"*) printf 'bigger\\n' > build/web/index.html; result "Bigger now." ;;
   *"Take your time"*) printf 'half\\n' > build/web/index.html; exec sleep 5 ;;
 esac
 `
@@ -118,5 +119,50 @@ describe('the change runner', () => {
     const changes = (await service.state()).changes
     expect(changes.find(item => item.id === change.id)?.status).toBe('needs-you')
     expect(changes.find(item => item.id === 'old')?.status).toBe('queued')
+  })
+
+  it('resumes the same Claude session for a reply and adds a commit', async () => {
+    const change = await request('Change the page')
+    await service.reply(change.id, 'Make it bigger')
+    await service.runQueue()
+    const replied = (await service.state()).changes[0]!
+    expect(replied).toMatchObject({ status: 'ready', summary: 'Bigger now.', followUp: null, needsReload: true, sessionId: change.sessionId })
+    expect(replied.replies.map(item => item.text)).toEqual(['Make it bigger'])
+    expect(replied.commits).toHaveLength(2)
+    const args = readFileSync(argsFile, 'utf8').split('\n')
+    expect(args[args.indexOf('--resume') + 1]).toBe(change.sessionId)
+    expect(args).not.toContain('--session-id')
+  })
+
+  it('tries a failed request again in a new session', async () => {
+    const failed = await request('Crash')
+    await service.retry(failed.id)
+    await service.runQueue()
+    const retried = (await service.state()).changes[0]!
+    expect(retried.status).toBe('needs-you')
+    expect(retried.sessionId).not.toBe(failed.sessionId)
+    await expect(service.retry('missing')).rejects.toThrow(/no longer exists/)
+  })
+
+  it('undoes a change, and refuses while a later change builds on it', async () => {
+    const first = await request('Change the page')
+    await request('Make it bigger')
+    await expect(service.undo(first.id)).rejects.toThrow(/Undo the later change first/)
+    expect(git('status', '--porcelain')).toBe('')
+
+    const later = (await service.state()).changes[1]!
+    expect(await service.undo(later.id)).toMatchObject({ status: 'undone', needsReload: true })
+    expect(readFileSync(join(overlayDir(), 'build/web/index.html'), 'utf8')).toBe('changed\n')
+    await service.undo(first.id)
+    expect(readFileSync(join(overlayDir(), 'build/web/index.html'), 'utf8')).toBe('shipped\n')
+    expect((await service.state()).reload).toBe('restart-cli')
+  })
+
+  it('shows the source and build diff of each commit', async () => {
+    const change = await request('Change the page')
+    const files = await service.diff(change.id)
+    expect(files.map(file => [file.area, file.path])).toEqual([['build', 'web/index.html'], ['source', 'src/web/main.tsx']])
+    expect(files[1]!.diff).toContain('+changed')
+    expect(files[1]!.commit).toBe(change.commits[0])
   })
 })

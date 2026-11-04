@@ -59,3 +59,11 @@ export function buildChangePrompt(change: LocalChange, screenshotPath: string | 
     lines.push(`A picture of the window when the user asked is at ${screenshotPath}. Open it with Read to see what they saw.`)
   return lines.join('\n').trimEnd()
 }
+
+export function buildFollowUpPrompt(reply: string) {
+  return `The user replied about this request:
+
+${reply}
+
+Other requests may have changed the folder since your last turn, so look at the files again before you edit. The same rules apply.`
+}
