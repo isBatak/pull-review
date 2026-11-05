@@ -17,7 +17,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
 - [x] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
 - [x] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
-- [ ] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
+- [x] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
 - [ ] 13. CLI: give the CLI its own overlay and the same Feedback flow.
 - [ ] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
 
@@ -332,6 +332,19 @@ Runs when the app starts on a new version and an older overlay has changes in `a
    - If Claude can't, status `needs-you` with Retry and Drop.
 4. When the queue is empty, set `active` to the new version and show the reload toast. Old overlays are deleted after 30 days.
 5. The Feedback page shows a banner while replay runs: "Moving 3 local changes to 0.2.19".
+
+**Result (2026-11-05):**
+
+- Applying the old commit's `build/` diff almost never works, because built files get new hashed names each release (`index-ABC.js` becomes `index-XYZ.js`). Only the `source/` part carries over. So a moved change is a replay request: the source patch is applied mechanically, and Claude redoes the build part.
+- `moveChanges()` in the service runs from `start()` before the queue, for changes whose `version` differs and that aren't `undone`, `dismissed` or `landed`:
+  - `ready` or `applied`: if the PR is merged and `landedIn()` finds its merge commit inside tag `v<new version>` (`gh pr view --json mergeCommit`, then `git merge-base --is-ancestor` in the PR work clone), the change becomes the new status `landed` ("In the app"). Otherwise its source patch from the old overlay is saved as `attachments/<id>/replay-<old>.patch`, and it becomes `queued` on the new version with `replay: { fromVersion, patchFile }`, no commits and no session.
+  - `queued`, `working` and `needs-you` move to the new version as they are, with a fresh session, since a Claude session is tied to the old folder.
+  - `broke-app` moves as `needs-you` with "This change broke the app on X, so it did not move to Y. Try again to make it from the request, or dismiss it."
+  - Each old overlay that had changes gets a `.migrated` file with the date. `removeOldOverlays()` deletes version folders 30 days after that.
+- Runner: for a `replay`, `overlay.applySourcePatch()` (`git apply --3way --directory=source`) runs first, then `buildReplayPrompt()`. It either says the source part is applied and only `build/` needs the matching edit, or that it did not apply and both sides need it, or that no diff exists. It also tells Claude to change nothing if the new version already does what was asked. On success `replay` is cleared. A failed replay keeps it, so "Try again" replays again. Queue order is kept, so moved changes run before newer requests.
+- The new overlay only turns on once the first replayed change is ready, so the app runs as shipped until then. The toast then offers a restart.
+- UI: a banner "Moving N local changes to X. The app runs as it shipped until they are ready.", queued replays say "moving from X", and landed changes show "In the app" with no actions.
+- Tests: `replay.test.ts` (source applied and build redone, source not fitting, waiting and broken requests, old overlays deleted after 30 days) and two cases in `pull-request.test.ts` (merged and in the new tag means landed; merged after the release means replayed). An older runner test that expected old-version requests to stay queued was updated, since they now move. Checked in a browser with the CLI and a fake `claude`: an applied change from 0.2.16 was replayed on 0.2.17 and committed, and a landed one showed "In the app". Not tested with two real packaged app versions.
 
 ### Step 13. CLI
 

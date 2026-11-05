@@ -107,18 +107,18 @@ describe('the change runner', () => {
     expect(readFileSync(join(overlayDir(), 'build/web/index.html'), 'utf8')).toBe('shipped\n')
   })
 
-  it('picks up requests that were running when the app quit, for this version only', async () => {
+  it('picks up requests that were running when the app quit, and waiting ones from an older version', async () => {
     const change = await service.create({ request: 'Change the page', context })
     await service.runQueue()
     await service.updateChanges((changes) => {
       changes[0]!.status = 'working'
-      changes.push({ ...changes[0]!, id: 'old', status: 'queued', version: '0.9.0' })
+      changes.push({ ...changes[0]!, id: 'old', status: 'queued', version: '0.9.0', commits: [] })
     })
     service = createService(join(root, 'claude'))
     await service.start()
     const changes = (await service.state()).changes
     expect(changes.find(item => item.id === change.id)?.status).toBe('needs-you')
-    expect(changes.find(item => item.id === 'old')?.status).toBe('queued')
+    expect(changes.find(item => item.id === 'old')).toMatchObject({ version: '1.0.0', status: 'needs-you' })
   })
 
   it('resumes the same Claude session for a reply and adds a commit', async () => {

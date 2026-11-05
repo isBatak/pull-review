@@ -166,7 +166,7 @@ export function withoutDetails(context: FeedbackContext, omitted: Iterable<Conte
   return next
 }
 
-export type ChangeStatus = 'queued' | 'working' | 'ready' | 'applied' | 'needs-you' | 'broke-app' | 'undone' | 'dismissed'
+export type ChangeStatus = 'queued' | 'working' | 'ready' | 'applied' | 'needs-you' | 'broke-app' | 'undone' | 'dismissed' | 'landed'
 
 export interface LocalChange {
   id: string
@@ -187,6 +187,12 @@ export interface LocalChange {
   replies: ChangeReply[]
   followUp: string | null
   pr: ChangePr | null
+  replay: ChangeReplay | null
+}
+
+export interface ChangeReplay {
+  fromVersion: string
+  patchFile: string | null
 }
 
 export interface ChangePr {
@@ -208,12 +214,13 @@ export interface ChangeDiffFile {
   diff: string | null
 }
 
-export const NEW_CHANGE_FIELDS: Pick<LocalChange, 'touchesBackend' | 'needsReload' | 'replies' | 'followUp' | 'pr'> = {
+export const NEW_CHANGE_FIELDS: Pick<LocalChange, 'touchesBackend' | 'needsReload' | 'replies' | 'followUp' | 'pr' | 'replay'> = {
   touchesBackend: false,
   needsReload: false,
   replies: [],
   followUp: null,
   pr: null,
+  replay: null,
 }
 
 export interface ChangeRun {
@@ -249,7 +256,7 @@ export function reloadKind(changes: LocalChange[], running: RunningBuild): Reloa
 
 export const OPEN_STATUSES: ChangeStatus[] = ['queued', 'working']
 export const NEEDS_YOU_STATUSES: ChangeStatus[] = ['needs-you', 'broke-app']
-export const DONE_STATUSES: ChangeStatus[] = ['ready', 'applied', 'undone']
+export const DONE_STATUSES: ChangeStatus[] = ['ready', 'applied', 'undone', 'landed']
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/
 

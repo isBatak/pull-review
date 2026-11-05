@@ -28,7 +28,7 @@ case "$1 $2" in
   "api user") echo "$GH_LOGIN" ;;
   "repo fork") exit 0 ;;
   "pr create") eval "body=\\\${$#}"; cat "$body" >> "$GH_LOG"; echo "https://github.com/isBatak/pull-review/pull/7" ;;
-  "pr view") echo "MERGED" ;;
+  "pr view") case "$*" in *mergeCommit*) echo "$MERGE_SHA" ;; *) echo "MERGED" ;; esac ;;
 esac
 `
 
@@ -38,12 +38,13 @@ describe('sending a local change as a pull request', () => {
   let root: string
   let service: SelfImproveService
   let login: string
+  let mergeSha: string
   const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
   const ghLog = () => readFileSync(join(root, 'gh.log'), 'utf8')
 
-  function createService(gh: string | null) {
-    const host = { ...createNodeLocalHost(), cacheDir: join(root, 'cache'), env: async () => ({ ...process.env as Record<string, string>, GH_LOG: join(root, 'gh.log'), GH_LOGIN: login }) }
-    return createSelfImproveService(host, createGitTools(host), { root: join(root, 'overlay'), version: '1.0.0', parts: [{ name: 'web', from: join(root, 'shipped') }] }, {
+  function createService(gh: string | null, version = '1.0.0') {
+    const host = { ...createNodeLocalHost(), cacheDir: join(root, 'cache'), env: async () => ({ ...process.env as Record<string, string>, GH_LOG: join(root, 'gh.log'), GH_LOGIN: login, MERGE_SHA: mergeSha }) }
+    return createSelfImproveService(host, createGitTools(host), { root: join(root, 'overlay'), version, parts: [{ name: 'web', from: join(root, 'shipped') }] }, {
       claudePath: Promise.resolve(join(root, 'claude')),
       gh: Promise.resolve(gh),
       remoteUrl: repo => join(root, repo === 'isBatak/pull-review' ? 'upstream.git' : 'fork.git'),
@@ -59,6 +60,7 @@ describe('sending a local change as a pull request', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'pull-review-pr-'))
     login = 'tester'
+    mergeSha = ''
     const work = join(root, 'work')
     mkdirSync(join(work, 'src/web'), { recursive: true })
     execFileSync('git', ['init', '--quiet', '-b', 'main', work])
@@ -148,5 +150,39 @@ describe('sending a local change as a pull request', () => {
     expect(git(fork, 'show', `${sent.pr!.branch}:src/web/main.tsx`)).toBe('export const a = 11\nexport const b = 2')
     expect(git(fork, 'rev-parse', `${sent.pr!.branch}^`)).toBe(git(fork, 'rev-parse', firstPr.branch))
     expect(ghLog()).toContain('Depends on #7, which this change builds on.')
+  })
+
+  it('marks a change as landed when its merged pull request is in the new release', async () => {
+    const change = await finishedChange()
+    await service.sendPr(change.id)
+    await service.refreshPrs()
+
+    const work = join(root, 'work')
+    writeFileSync(join(work, 'src/web/main.tsx'), 'export const a = 10\nexport const b = 2\n')
+    git(work, 'commit', '--quiet', '-am', 'Merge pull request #7')
+    mergeSha = git(work, 'rev-parse', 'HEAD')
+    git(work, 'tag', 'v1.1.0')
+    git(work, 'push', '--quiet', 'origin', 'main', '--tags')
+
+    const next = createService(join(root, 'gh'), '1.1.0')
+    await next.start()
+    expect((await next.state()).changes[0]).toMatchObject({ status: 'landed', version: '1.0.0', needsReload: false })
+  })
+
+  it('replays a merged change that is not in the new release yet', async () => {
+    const change = await finishedChange()
+    await service.sendPr(change.id)
+    await service.refreshPrs()
+    const work = join(root, 'work')
+    git(work, 'tag', 'v1.1.0', 'v1.0.0')
+    writeFileSync(join(work, 'later.txt'), 'later\n')
+    git(work, 'add', '.')
+    git(work, 'commit', '--quiet', '-m', 'Merge pull request #7 after the release')
+    mergeSha = git(work, 'rev-parse', 'HEAD')
+    git(work, 'push', '--quiet', 'origin', 'main', '--tags')
+
+    const next = createService(join(root, 'gh'), '1.1.0')
+    await next.start()
+    expect((await next.state()).changes.find(item => item.id === change.id)).toMatchObject({ version: '1.1.0', replay: null, status: 'ready' })
   })
 })

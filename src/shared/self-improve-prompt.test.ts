@@ -1,6 +1,6 @@
 import type { LocalChange } from './self-improve'
 import { describe, expect, it } from 'vitest'
-import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt } from './self-improve-prompt'
+import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt, buildReplayPrompt } from './self-improve-prompt'
 
 const change: LocalChange = {
   id: 'a',
@@ -36,6 +36,7 @@ const change: LocalChange = {
   replies: [],
   followUp: null,
   pr: null,
+  replay: null,
 }
 
 describe('the change prompt', () => {
@@ -67,5 +68,15 @@ describe('the change prompt', () => {
     const prompt = buildFollowUpPrompt('Make it a bit smaller')
     expect(prompt).toMatch(/^The user replied about this request:\n\nMake it a bit smaller\n\n/)
     expect(prompt).toContain('look at the files again')
+  })
+
+  it('asks to bring a change to a new version', () => {
+    const base = { fromVersion: '1.0.0', toVersion: '1.1.0', patchPath: '/a/replay.patch' }
+    const applied = buildReplayPrompt(change, null, { ...base, sourceApplied: true })
+    expect(applied).toMatch(/^The user made this change on version 1\.0\.0\. The app has since updated to 1\.1\.0/)
+    expect(applied).toContain('it has already been applied to source/ here. Make the matching change in build/')
+    expect(applied).toContain('Request: Remove the gap under the version badge')
+    expect(buildReplayPrompt(change, null, { ...base, sourceApplied: false })).toContain('did not apply to this version\'s source. Make the change in both source/ and build/')
+    expect(buildReplayPrompt(change, null, { ...base, patchPath: null, sourceApplied: false })).toContain('Its old diff is not available')
   })
 })

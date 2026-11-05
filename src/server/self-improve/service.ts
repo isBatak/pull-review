@@ -13,6 +13,11 @@ import { createChangeRunner } from './runner'
 
 export const MAX_REQUEST_LENGTH = 4000
 export const MAX_SHOWN_DIFF_LENGTH = 100_000
+export const OLD_OVERLAY_DAYS = 30
+
+const MIGRATED_FILE = '.migrated'
+const VERSION_DIR = /^\d+\.\d+\.\d+/
+const DAY_MS = 24 * 60 * 60_000
 
 export class SelfImproveError extends Error {
   constructor(message: string, public status: 400 | 404 | 409 = 400) {
@@ -29,6 +34,7 @@ const DISMISSABLE = new Set([...OPEN_STATUSES, ...NEEDS_YOU_STATUSES])
 const REPLYABLE = new Set<ChangeStatus>([...NEEDS_YOU_STATUSES, 'ready', 'applied'])
 const UNDOABLE = new Set<ChangeStatus>(['ready', 'applied', 'broke-app'])
 const SENDABLE = new Set<ChangeStatus>(['ready', 'applied'])
+const SETTLED = new Set<ChangeStatus>(['undone', 'dismissed', 'landed'])
 
 export interface SelfImproveOptions {
   claudePath?: Promise<string | null>
@@ -258,6 +264,72 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     })
   }
 
+  async function oldSourcePatch(change: LocalChange) {
+    const old = createOverlayStore(host, tools, { ...config, version: change.version })
+    const patches: string[] = []
+    for (const commit of change.commits)
+      patches.push(await old.sourcePatch(commit))
+    const text = patches.join('\n')
+    if (!text.trim())
+      return null
+    const file = `${attachmentDir(change.id)}/replay-${change.version}.patch`
+    await host.makeDir(attachmentDir(change.id))
+    await host.writeFile(file, text)
+    return file
+  }
+
+  async function moveChanges() {
+    const old = (await readChanges()).filter(change => change.version !== config.version && !SETTLED.has(change.status))
+    if (!old.length)
+      return
+    const prepared = new Map<string, { landed: boolean, patchFile: string | null }>()
+    for (const change of old.filter(item => SENDABLE.has(item.status))) {
+      const landed = change.pr?.state === 'merged' && await pullRequests.landedIn(change.pr, config.version)
+      const patchFile = landed ? null : await oldSourcePatch(change).catch(() => null)
+      prepared.set(change.id, { landed, patchFile })
+    }
+    await updateChanges((changes) => {
+      for (const change of changes) {
+        if (change.version === config.version || SETTLED.has(change.status))
+          continue
+        const from = change.version
+        const ready = prepared.get(change.id)
+        if (ready?.landed) {
+          Object.assign(change, { status: 'landed', needsReload: false })
+          continue
+        }
+        const moved = { version: config.version, sessionId: null, commits: [], touchesBackend: false, needsReload: false }
+        if (ready)
+          Object.assign(change, moved, { status: 'queued', error: null, followUp: null, replay: { fromVersion: from, patchFile: ready.patchFile } })
+        else if (change.status === 'broke-app')
+          Object.assign(change, moved, { status: 'needs-you', replay: null, error: `This change broke the app on ${from}, so it did not move to ${config.version}. Try again to make it from the request, or dismiss it.` })
+        else
+          Object.assign(change, moved, { status: change.status === 'working' ? 'queued' : change.status })
+      }
+    })
+    for (const version of new Set(old.map(change => change.version))) {
+      const dir = `${config.root}/${version}`
+      if (await host.exists(dir) && !await host.exists(`${dir}/${MIGRATED_FILE}`))
+        await host.writeFile(`${dir}/${MIGRATED_FILE}`, `${new Date().toISOString()}\n`)
+    }
+  }
+
+  async function removeOldOverlays(now = Date.now()) {
+    for (const name of await host.listDir(config.root)) {
+      if (!VERSION_DIR.test(name) || name === config.version)
+        continue
+      const movedAt = Date.parse((await host.readFile(`${config.root}/${name}/${MIGRATED_FILE}`))?.trim() ?? '')
+      if (movedAt && now - movedAt > OLD_OVERLAY_DAYS * DAY_MS)
+        await host.remove(`${config.root}/${name}`)
+    }
+  }
+
+  async function start() {
+    await moveChanges().catch(() => null)
+    await removeOldOverlays().catch(() => null)
+    return runner.start()
+  }
+
   function markApplied() {
     return updateChanges((changes) => {
       for (const change of changes) {
@@ -314,7 +386,8 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
 
   return {
     overlay,
-    start: runner.start,
+    start,
+    removeOldOverlays,
     runQueue: runner.kick,
     state,
     create,

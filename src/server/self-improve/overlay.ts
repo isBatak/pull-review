@@ -118,6 +118,14 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     return result.stdout
   }
 
+  async function applySourcePatch(file: string) {
+    const applied = await tools.git(['apply', '--3way', '--directory=source', file], dir)
+    if (applied.code === 0)
+      return true
+    await discard()
+    return false
+  }
+
   async function discard() {
     await tools.gitOk(['reset', '--quiet', '--hard', 'HEAD'], dir)
     await tools.gitOk(['clean', '-fdq'], dir)
@@ -128,5 +136,5 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     await tools.gitOk(['clean', '-fdq'], dir)
   }
 
-  return { dir, ensure, isActive, setActive, changedFiles, commit, commitDiff, sourcePatch, revert, discard, reset }
+  return { dir, ensure, isActive, setActive, changedFiles, commit, commitDiff, sourcePatch, applySourcePatch, revert, discard, reset }
 }

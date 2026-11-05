@@ -2,7 +2,7 @@ import type { ChatMessage } from '../../shared/chat'
 import type { ChangeRun, ChangeStatus, LocalChange } from '../../shared/self-improve'
 import type { LocalHost, StreamedProcess } from '../local/host'
 import type { OverlayStore } from './overlay'
-import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt } from '../../shared/self-improve-prompt'
+import { buildChangePrompt, buildChangeSystemPrompt, buildFollowUpPrompt, buildReplayPrompt } from '../../shared/self-improve-prompt'
 import { applyStreamLine, explainExit } from '../chat/claude-events'
 import { claudeEnv } from '../local/claude'
 
@@ -77,10 +77,16 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
     return null
   }
 
-  function promptFor(change: LocalChange, resume: boolean) {
+  async function promptFor(change: LocalChange, resume: boolean) {
     if (resume)
       return buildFollowUpPrompt(change.followUp!)
-    const prompt = buildChangePrompt(change, change.hasScreenshot ? options.screenshotPath(change.id) : null)
+    const screenshot = change.hasScreenshot ? options.screenshotPath(change.id) : null
+    let prompt = buildChangePrompt(change, screenshot)
+    if (change.replay) {
+      const patchPath = change.replay.patchFile && await host.exists(change.replay.patchFile) ? change.replay.patchFile : null
+      const sourceApplied = patchPath ? await overlay.applySourcePatch(patchPath) : false
+      prompt = buildReplayPrompt(change, screenshot, { fromVersion: change.replay.fromVersion, toVersion: options.version, patchPath, sourceApplied })
+    }
     return change.followUp ? `${prompt}\n\n${buildFollowUpPrompt(change.followUp)}` : prompt
   }
 
@@ -100,7 +106,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
       const dir = await overlay.ensure()
       await overlay.discard()
       await host.makeDir(options.attachmentDir(change.id))
-      await host.writeFile(promptFile, promptFor(change, resume))
+      await host.writeFile(promptFile, await promptFor(change, resume))
 
       let finished = false
       const process = host.stream([
@@ -152,6 +158,7 @@ export function createChangeRunner(options: ChangeRunnerOptions) {
       return await finish(change.id, 'ready', {
         summary,
         needsReload: true,
+        replay: null,
         commits: sha ? [...change.commits, sha] : change.commits,
         touchesBackend: change.touchesBackend || files.some(file => file.startsWith('build/') && !PAGE_FILE.test(file)),
       })

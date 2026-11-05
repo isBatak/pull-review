@@ -67,3 +67,22 @@ ${reply}
 
 Other requests may have changed the folder since your last turn, so look at the files again before you edit. The same rules apply.`
 }
+
+export interface ReplayPromptInput {
+  fromVersion: string
+  toVersion: string
+  patchPath: string | null
+  sourceApplied: boolean
+}
+
+export function buildReplayPrompt(change: LocalChange, screenshotPath: string | null, replay: ReplayPromptInput) {
+  const steps = !replay.patchPath
+    ? 'Its old diff is not available, so make the change again from the request.'
+    : replay.sourceApplied
+      ? `Its source diff from ${replay.fromVersion} is at ${replay.patchPath}, and it has already been applied to source/ here. Make the matching change in build/ so the running app shows it.`
+      : `Its source diff from ${replay.fromVersion} is at ${replay.patchPath}, but it did not apply to this version's source. Make the change in both source/ and build/, following that diff where it still fits.`
+  return `The user made this change on version ${replay.fromVersion}. The app has since updated to ${replay.toVersion}, so bring the change over. ${steps}
+If ${replay.toVersion} already does what the request asks, change nothing and say so in one sentence.
+
+${buildChangePrompt(change, screenshotPath)}`
+}

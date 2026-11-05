@@ -160,9 +160,22 @@ export function createPullRequests(options: PullRequestOptions) {
     return value === 'MERGED' ? 'merged' : value === 'CLOSED' ? 'closed' : 'open'
   }
 
+  async function landedIn(pr: ChangePr, version: string) {
+    try {
+      const mergeCommit = await gh(['pr', 'view', String(pr.number), '--repo', repo, '--json', 'mergeCommit', '--jq', '.mergeCommit.oid'])
+      if (!mergeCommit)
+        return false
+      await prepareClone()
+      return (await tools.git(['merge-base', '--is-ancestor', mergeCommit, `v${version}`], cloneDir)).code === 0
+    }
+    catch {
+      return false
+    }
+  }
+
   async function patch(change: LocalChange) {
     return (await sourcePatches(change)).join('\n')
   }
 
-  return { send, state, patch }
+  return { send, state, patch, landedIn }
 }

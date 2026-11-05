@@ -110,7 +110,7 @@ function StatusRow({ change, now }: { change: LocalChange, now: Date }) {
         <CircleDashed className={css({ color: 'fg.subtle' })} />
         <span className={css({ color: 'fg.muted' })}>
           <strong className={css({ fontWeight: 'semibold', color: 'fg.default' })}>Queued</strong>
-          {' · waiting for the agent to start'}
+          {change.replay ? ` · moving from ${change.replay.fromVersion}` : ' · waiting for the agent to start'}
         </span>
       </div>
     )
@@ -194,6 +194,7 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
   const [error, setError] = useState<string | null>(null)
   const commit = change.commits.at(-1)
   const undone = change.status === 'undone'
+  const landed = change.status === 'landed'
 
   return (
     <li className={css({ borderTopWidth: '1px', borderColor: 'border.default', _first: { borderTopWidth: '0' } })}>
@@ -207,14 +208,15 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
           ? <RotateCcw className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'fg.subtle' })} aria-label="Undone" />
           : <CheckCircle2 className={css({ w: '4.5', h: '4.5', flexShrink: 0, color: 'success.fg' })} aria-label="Done" />}
         <span className={css({ flex: '1', minW: '0', truncate: true, fontSize: 'sm', color: undone ? 'fg.subtle' : 'fg.default', textDecoration: undone ? 'line-through' : 'none' })}>{change.request}</span>
-        {commit && !undone
+        {landed && <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'success.fg' })}>In the app</span>}
+        {commit && !undone && !landed
           ? (
               <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', flexShrink: 0, h: '6', px: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'full', fontFamily: 'mono', fontSize: 'xs', color: 'fg.muted', '& svg': { w: '3.5', h: '3.5', color: 'accent.fg' } })}>
                 <GitCommitHorizontal />
                 {commit.slice(0, 7)}
               </span>
             )
-          : <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
+          : !landed && <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
         {change.pr && <PrChip pr={change.pr} />}
         <span className={css({ flexShrink: 0, minW: '14', textAlign: 'right', whiteSpace: 'nowrap', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
       </button>
@@ -228,7 +230,7 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
             </p>
           )}
           <Replies change={change} />
-          {!undone && (
+          {!undone && !landed && (
             <div className={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2' })}>
               <ReplyBox placeholder="Ask for a follow-up change…" onSend={text => act(() => api.replyToChange(change.id, text))} />
               <Button variant="ghost" size="md" onClick={() => setShowDiff(value => !value)}>{showDiff ? 'Hide diff' : 'View diff'}</Button>
@@ -237,7 +239,7 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
             </div>
           )}
           <ActionError message={error} />
-          {showDiff && !undone && <ChangeDiff change={change} />}
+          {showDiff && !undone && !landed && <ChangeDiff change={change} />}
         </div>
       )}
     </li>
@@ -329,6 +331,7 @@ export function FeedbackPage() {
   const needsYou = changes.filter(change => NEEDS_YOU_STATUSES.includes(change.status))
   const done = changes.filter(change => DONE_STATUSES.includes(change.status)).reverse()
   const now = useNow(open.length > 0)
+  const moving = open.filter(change => change.replay)
 
   useEffect(() => {
     document.title = 'Feedback'
@@ -373,6 +376,12 @@ export function FeedbackPage() {
         {state.isError && <ErrorState title="Local changes are not available" message={state.error.message} />}
         {state.data?.bootFailure && (
           <BootFailureBanner {...state.data.bootFailure} onDismiss={() => void act(api.dismissBootFailure)} />
+        )}
+        {moving.length > 0 && (
+          <p role="status" className={css({ display: 'flex', alignItems: 'center', gap: '2', px: '4', py: '3', borderRadius: 'xl', bg: 'accent.subtle', color: 'accent.fg', fontSize: 'sm', '& svg': { w: '4', h: '4', animation: 'spin' } })}>
+            <LoaderCircle />
+            {`Moving ${moving.length} local ${moving.length === 1 ? 'change' : 'changes'} to ${__APP_VERSION__}. The app runs as it shipped until they are ready.`}
+          </p>
         )}
         {state.isSuccess && <RequestBox onSent={() => void refresh()} />}
         {open.length > 0 && (
