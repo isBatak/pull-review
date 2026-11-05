@@ -1,6 +1,7 @@
 import type { MrRef } from '../shared/types'
 import type { AppOptions } from './app'
 import type { ChatService } from './chat/service'
+import { dirname } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { createAdaptorServer } from '@hono/node-server'
@@ -8,7 +9,10 @@ import { cac } from 'cac'
 import open from 'open'
 import { mrAppPath, parseMrRef } from '../shared/mr-ref'
 import { createApp } from './app'
+import { createGitTools } from './local/git'
 import { createNodeLocalHost } from './local/node-host'
+import { cliOverlayRoot, openFolderCommand } from './self-improve/cli-overlay'
+import { createSelfImproveService } from './self-improve/service'
 import { createChatService } from './chat/service'
 import { detectMrFromGit } from './detect'
 import { resolveToken, tokenHelp } from './token'
@@ -61,6 +65,7 @@ cli
   .option('--port <port>', 'Port for the local server', { default: DEFAULT_PORT })
   .option('--host <host>', 'Default GitLab host for short refs like group/project!1', { default: process.env.GITLAB_HOST })
   .option('--no-open', 'Do not open the browser')
+  .option('--shipped', 'Run without your local changes from the Feedback page')
   .example('pull-review https://gitlab.com/group/project/-/merge_requests/42')
   .example('pull-review group/project!42 --host gitlab.com')
   .example('pull-review   # the open merge request of the current branch')
@@ -79,7 +84,20 @@ cli
     const host = createNodeLocalHost()
     const chat = createChatService(host)
     stopChatOnExit(chat)
-    const port = await listen({ webRoot: fileURLToPath(new URL('./web', import.meta.url)), initialPath, cwd: process.cwd(), chat, host }, Number(flags.port))
+    const webRoot = fileURLToPath(new URL('./web', import.meta.url))
+    const shipped = globalThis.__pullReviewShipped ?? dirname(fileURLToPath(import.meta.url))
+    const selfImprove = createSelfImproveService(host, createGitTools(host), {
+      root: cliOverlayRoot(host.homeDir, process.platform, process.env.XDG_DATA_HOME),
+      version: __APP_VERSION__,
+      parts: [{ name: 'web', from: `${shipped}/web` }, { name: 'cli.mjs', from: `${shipped}/cli.mjs` }, { name: 'cli.mjs.map', from: `${shipped}/cli.mjs.map` }],
+    }, {
+      running: () => ({ overlay: Boolean(globalThis.__pullReviewOverlay), canRestart: false }),
+      openFolderCommand: openFolderCommand(process.platform),
+    })
+    if (globalThis.__pullReviewStartFailure)
+      void selfImprove.markBroken(globalThis.__pullReviewStartFailure)
+    void selfImprove.start()
+    const port = await listen({ webRoot, initialPath, cwd: process.cwd(), chat, host, selfImprove }, Number(flags.port))
     const url = `http://127.0.0.1:${port}${initialPath}`
     console.log(`\n  pull-review is running at ${url}\n  Press Ctrl+C to stop.\n`)
     if (flags.open)

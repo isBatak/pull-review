@@ -1,14 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter, Route, Routes, useLocation } from 'react-router'
 import { parseMrRef } from '../shared/mr-ref'
+import { BOOT_READY_METHOD } from '../shared/self-improve'
+import { FeedbackPage } from './pages/feedback-page'
 import { HomePage } from './pages/home-page'
 import { ReleasesPage } from './pages/releases-page'
 import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
+import { FEEDBACK_PATH, SelfImproveProvider } from './feedback/self-improve'
+import { api } from './lib/api'
 import { preloadDiffHighlighter } from './lib/code-tokens'
-import { isTinyApp, routeExternalLinks } from './lib/platform'
+import { callApp, isTinyApp, routeExternalLinks } from './lib/platform'
 import { useZoomController } from './lib/zoom'
 import { ErrorState } from './pages/states'
 import '@pierre/truncate/style.css'
@@ -33,6 +37,14 @@ function ZoomController() {
   return null
 }
 
+function BootReady() {
+  useEffect(() => {
+    const reported = isTinyApp ? callApp(BOOT_READY_METHOD, { url: location.href }) : api.markApplied()
+    void reported.catch(() => null)
+  }, [])
+  return null
+}
+
 const Router = isTinyApp ? HashRouter : BrowserRouter
 
 routeExternalLinks()
@@ -43,13 +55,17 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ZoomController />
       <Router>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/releases/:kind?" element={<ReleasesPage />} />
-          <Route path="*" element={<MrRoute />} />
-        </Routes>
+        <SelfImproveProvider>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/releases/:kind?" element={<ReleasesPage />} />
+            <Route path={FEEDBACK_PATH} element={<FeedbackPage />} />
+            <Route path="*" element={<MrRoute />} />
+          </Routes>
+        </SelfImproveProvider>
       </Router>
       {isTinyApp && <UpdateDialog />}
+      <BootReady />
     </QueryClientProvider>
   </StrictMode>,
 )

@@ -23,7 +23,10 @@ interface TinyMenuItem {
 
 interface TinyApp {
   setMenu: (menus: Array<{ role: 'app', items: TinyMenuItem[] }>) => void
+  eval: (js: string) => void
+  quit: () => void
 }
+
 
 declare const tjs: {
   env: Record<string, string | undefined>

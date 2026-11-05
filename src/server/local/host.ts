@@ -27,12 +27,14 @@ export interface LocalHost {
   stream: (args: string[], options: StreamOptions) => StreamedProcess
   launch: (args: string[], env: Record<string, string>) => void
   writeFile: (path: string, text: string) => Promise<void>
+  writeBinary: (path: string, bytes: Uint8Array) => Promise<void>
   readFile: (path: string) => Promise<string | null>
   makeDir: (path: string) => Promise<void>
   remove: (path: string) => Promise<void>
   listDir: (path: string) => Promise<string[]>
   exists: (path: string) => Promise<boolean>
   isProcessAlive: (pid: number) => Promise<boolean>
+  checkModuleSyntax: (path: string) => Promise<string | null>
 }
 
 const FALLBACK_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']

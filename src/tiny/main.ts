@@ -1,144 +1,136 @@
-import { parseEnvOutput } from '../shared/env-output'
-import { CHECK_FOR_UPDATES_MENU_ID } from '../shared/updates'
-import { createApi } from '../server/api'
-import { createChatService } from '../server/chat/service'
-import { createTokenResolver } from '../server/token-core'
-import { createTinyLocalHost } from './local-host'
+import type * as AppModule from './app'
+import type { BootFailure, OverlayBoot, PageNavigation } from '../shared/self-improve'
+import { APP_OVERLAY_ROOT, BOOT_FAILURE_FILE, BOOTING_FILE, createOverlayBoot, OPTION_KEY_FLAG, overlayPageUrl, packagedAppDir, packagedBundle } from '../shared/self-improve'
 
-const FALLBACK_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
-const SHELL_TIMEOUT_MS = 5000
+const OVERLAY_ROOT = `${tjs.homeDir}/${APP_OVERLAY_ROOT}`
+const BOOTING_MARKER = `${OVERLAY_ROOT}/${BOOTING_FILE}`
+const MODIFIER_FLAGS_SCRIPT = 'ObjC.import("AppKit"); $.NSEvent.modifierFlags'
 
-async function readAll(process: TjsProcess, timeoutMs: number): Promise<string> {
-  const reader = process.stdout?.getReader()
-  if (!reader)
-    return ''
-  const decoder = new TextDecoder()
-  const timer = setTimeout(() => process.kill('SIGKILL'), timeoutMs)
-  let output = ''
+const RESTART_DELAY_S = 1
+
+let startFailure: string | null = null
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+async function exists(path: string) {
   try {
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      output += decoder.decode(value, { stream: true })
-    }
-    await process.wait()
+    await tjs.stat(path)
+    return true
   }
-  finally {
-    clearTimeout(timer)
+  catch {
+    return false
   }
-  return output
 }
 
-async function run(args: string[], timeoutMs = SHELL_TIMEOUT_MS): Promise<string | null> {
+async function isOptionKeyDown() {
   try {
-    return await readAll(tjs.spawn(args, { stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' }), timeoutMs)
+    const process = tjs.spawn(['/usr/bin/osascript', '-l', 'JavaScript', '-e', MODIFIER_FLAGS_SCRIPT], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' })
+    const reader = process.stdout?.getReader()
+    let output = ''
+    for (;;) {
+      const chunk = await reader?.read()
+      if (!chunk || chunk.done)
+        break
+      output += decoder.decode(chunk.value, { stream: true })
+    }
+    await process.wait()
+    return (Number(output.trim()) & OPTION_KEY_FLAG) !== 0
+  }
+  catch {
+    return false
+  }
+}
+
+async function findActiveOverlay(): Promise<string | null> {
+  // The overlay's own copy of this loader must load its app, not look for an overlay again.
+  if (globalThis.__pullReviewOverlay || !packagedAppDir(tjs.exePath))
+    return null
+  try {
+    const version = decoder.decode(await tjs.readFile(`${OVERLAY_ROOT}/active`)).trim()
+    if (version !== __APP_VERSION__)
+      return null
+    await tjs.stat(`${OVERLAY_ROOT}/${version}/build/app-backend/main.js`)
   }
   catch {
     return null
   }
-}
-
-const loginShellEnv: Promise<Record<string, string>> = (async () => {
-  const shell = tjs.env.SHELL || '/bin/zsh'
-  const output = await run([shell, '-ilc', '/usr/bin/env -0'])
-  return output ? parseEnvOutput(output) : {}
-})()
-
-async function findGlab(): Promise<string | null> {
-  const env = await loginShellEnv
-  const dirs = [...(env.PATH ?? tjs.env.PATH ?? '').split(':'), ...FALLBACK_PATHS].filter(Boolean)
-  for (const dir of new Set(dirs)) {
-    try {
-      await tjs.stat(`${dir}/glab`)
-      return `${dir}/glab`
-    }
-    catch {}
+  if (await exists(BOOTING_MARKER)) {
+    startFailure = 'The app closed while it started the changed backend.'
+    await turnOffOverlay(startFailure)
+    return null
   }
-  return null
+  return await isOptionKeyDown() ? null : `${OVERLAY_ROOT}/${__APP_VERSION__}`
 }
 
-const glabPath = findGlab()
-
-const resolveToken = createTokenResolver({
-  getEnv: async key => (await loginShellEnv)[key] ?? tjs.env[key],
-  async readGlabToken(host) {
-    const glab = await glabPath
-    if (!glab)
-      return null
-    return (await run([glab, 'config', 'get', 'token', '--host', host]))?.trim() || null
-  },
-})
-
-const localEnv = loginShellEnv.then((env) => {
-  const merged: Record<string, string> = {}
-  for (const [key, value] of Object.entries(tjs.env)) {
-    if (value !== undefined)
-      merged[key] = value
+async function turnOffOverlay(reason: string) {
+  const failure: BootFailure = { version: __APP_VERSION__, reason, at: new Date().toISOString() }
+  try {
+    await tjs.writeFile(`${OVERLAY_ROOT}/active`, encoder.encode('off\n'))
+    await tjs.writeFile(`${OVERLAY_ROOT}/${BOOT_FAILURE_FILE}`, encoder.encode(`${JSON.stringify(failure, null, 2)}\n`))
+    await tjs.remove(BOOTING_MARKER).catch(() => undefined)
   }
-  return { ...merged, ...env }
-})
-
-const host = createTinyLocalHost(() => localEnv)
-const chat = createChatService(host)
-
-const server = createApi({ resolveToken, chat, host })
-
-const TEXT_TYPE = /^(?:text\/|application\/(?:json|javascript|xml)|image\/svg\+xml)/
-
-function toBase64(bytes: Uint8Array) {
-  let binary = ''
-  const chunk = 0x8000
-  for (let index = 0; index < bytes.length; index += chunk)
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
-  return btoa(binary)
+  catch {}
 }
 
-export interface BridgeRequest {
-  method: string
-  path: string
-  body?: string
+async function loadApp(overlayDir: string | null): Promise<{ app: typeof AppModule, overlayDir: string | null }> {
+  if (!overlayDir)
+    return { app: await import('./app'), overlayDir: null }
+  globalThis.__pullReviewOverlay = overlayDir
+  // txiki.js crashes when an imported module throws while loading, even inside try, so a marker file catches it on the next start.
+  await tjs.writeFile(BOOTING_MARKER, encoder.encode(`${__APP_VERSION__}\n`))
+  const app: typeof AppModule = await import(`${overlayDir}/build/app-backend/main.js`)
+  await tjs.remove(BOOTING_MARKER)
+  return { app, overlayDir }
 }
 
-export interface BridgeResponse {
-  status: number
-  contentType: string
-  text?: string
-  base64?: string
+const { app, overlayDir } = await loadApp(await findActiveOverlay())
+
+function report(action: 'applied' | 'broken', body?: unknown) {
+  return app.api.request({ method: 'POST', path: `/api/self-improve/${action}`, body: body === undefined ? undefined : JSON.stringify(body) }).catch(() => null)
 }
+
+if (startFailure)
+  void report('broken', { reason: startFailure })
+
+let boot: OverlayBoot | null = null
+let appWindow: TinyApp | null = null
 
 export const api = {
-  async request({ method, path, body }: BridgeRequest): Promise<BridgeResponse> {
-    const response = await server.fetch(new Request(`http://pull-review${path}`, {
-      method,
-      headers: { 'x-pull-review': '1', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
-      body,
-    }))
-    const contentType = response.headers.get('content-type') ?? ''
-    if (TEXT_TYPE.test(contentType) || !contentType)
-      return { status: response.status, contentType, text: await response.text() }
-    return { status: response.status, contentType, base64: toBase64(new Uint8Array(await response.arrayBuffer())) }
+  ...app.api,
+  bootReady({ url }: { url: string }) {
+    boot?.ready(url)
+    if (boot?.state === 'ready')
+      void report('applied')
+    return true
+  },
+  restartApp() {
+    const bundle = packagedBundle(tjs.exePath)
+    if (!bundle || !appWindow)
+      return false
+    tjs.spawn(['/bin/sh', '-c', `sleep ${RESTART_DELAY_S}; exec /usr/bin/open -n "$0"`, bundle], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' })
+    const closing = appWindow
+    setTimeout(() => closing.quit(), 100)
+    return true
   },
 }
 
-export function init(app: TinyApp) {
-  app.setMenu([{ role: 'app', items: [{ id: CHECK_FOR_UPDATES_MENU_ID, label: 'Check for Updates…' }] }])
+export function init(tinyApp: TinyApp) {
+  appWindow = tinyApp
+  app.init(tinyApp)
+  if (overlayDir) {
+    boot = createOverlayBoot({
+      overlayPage: overlayPageUrl(overlayDir),
+      goTo: url => tinyApp.eval(`location.replace(${JSON.stringify(url)})`),
+      onFailure: (reason) => {
+        void turnOffOverlay(reason)
+        void report('broken', { reason })
+      },
+    })
+  }
 }
 
-const DEV_ORIGIN = 'http://127.0.0.1:5173'
-const APP_PAGE = /^(?:file|about):/i
-const EXTERNAL_LINK = /^(?:https?|mailto):/i
-
-interface NavigationInfo {
-  kind: string
-  url?: string
-}
-
-export function onNavigate(info: NavigationInfo): 'allow' | 'deny' | 'external' | undefined {
-  if (info.kind !== 'policy')
-    return undefined
-  const url = info.url ?? ''
-  if (APP_PAGE.test(url) || url === DEV_ORIGIN || url.startsWith(`${DEV_ORIGIN}/`))
-    return 'allow'
-  return EXTERNAL_LINK.test(url) ? 'external' : 'deny'
+export function onNavigate(info: PageNavigation) {
+  boot?.onNavigate(info)
+  return app.onNavigate(info)
 }

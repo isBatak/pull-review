@@ -19,6 +19,7 @@ import { BackupTab } from './backup-tab'
 import { BundleTab } from './bundle-tab'
 import { CategoriesTab } from './categories-tab'
 import { EditorSetting } from './editor-setting'
+import { LocalChangesSetting } from './local-changes-setting'
 import { LocalRepos } from './local-repos'
 import { ReleasesTab } from './releases-tab'
 
@@ -139,6 +140,7 @@ function GeneralTab({ settings, onChange }: Pick<SettingsDialogProps, 'settings'
       </div>
       <LocalRepos settings={settings} onChange={onChange} />
       <EditorSetting settings={settings} onChange={onChange} />
+      <LocalChangesSetting />
       <div>
         <label className={fieldLabel} htmlFor="settings-jira">Jira site</label>
         <input

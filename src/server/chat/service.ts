@@ -7,7 +7,7 @@ import type { SavedChat, SentPrompt } from './saved-chat'
 import { buildContextUpdateNote, buildDiscussionsSummary, buildMrSummary, buildPatch, buildPrompt, buildSystemPrompt, chatModelArgs, EMPTY_CHAT_STATE, fileDiffName } from '../../shared/chat'
 import { mrKey } from '../../shared/mr-ref'
 import { applyStreamLine, explainExit } from './claude-events'
-import { findExecutable } from '../local/host'
+import { claudeEnv as cleanClaudeEnv, findClaude } from '../local/claude'
 import { expandHome } from '../local/git'
 import type { ResolvedFile, ResolvePromptInput } from '../../shared/conflicts'
 import type { MrDraft, MrDraftPromptInput } from '../../shared/new-mr'
@@ -29,7 +29,6 @@ const IDLE_LIMIT_MS = 30 * 60_000
 const IDLE_CHECK_MS = 60_000
 const MAX_WAIT_MS = 20_000
 const READ_ONLY_TOOLS = 'Read,Grep,Glob'
-const REMOVED_ENV = ['ANTHROPIC_API_KEY', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
 const MAX_PREVIEW_CHARS = 200_000
 const MAX_PLAN_DIFF_CHARS = 150_000
 const MAX_PLAN_FILE_DIFF_CHARS = 20_000
@@ -121,7 +120,7 @@ function errorMessage(error: unknown) {
 export function createChatService(host: LocalHost): ChatService {
   const sessions = new Map<string, Session>()
   const workspaces = createWorkspaces(host)
-  const claudePath = findExecutable(host, 'claude', [`${host.homeDir}/.local/bin`, `${host.homeDir}/.claude/local`])
+  const claudePath = findClaude(host)
 
   const reviews = createReviewRunner({
     host,
@@ -398,11 +397,8 @@ export function createChatService(host: LocalHost): ChatService {
     }
   }
 
-  async function claudeEnv() {
-    const env = { ...await host.env() }
-    for (const key of REMOVED_ENV)
-      delete env[key]
-    return env
+  function claudeEnv() {
+    return cleanClaudeEnv(host)
   }
 
   async function runTurn(session: Session, question: ChatMessage, reply: ChatMessage, load: () => Promise<MrSnapshot>, input: ChatSendInput) {

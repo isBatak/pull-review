@@ -11,6 +11,7 @@ import { formatStackedTag, parseMrTitle } from '../../shared/mr-title'
 import { timeAgo } from '../lib/format'
 import { homePath } from '../lib/last-home'
 import { useSettings } from '../lib/settings'
+import { SelfImproveButtons } from '../feedback/self-improve'
 import { BranchPills } from './branch-pills'
 import { DiffStat } from './file-diff-card'
 import { AppTagBadge, DraftChip, JiraChip } from './mr-list/title-parts'
@@ -214,6 +215,7 @@ export function MrHeader({ files, groups, localStatus }: MrHeaderProps) {
         </div>
       </div>
       <div className={css({ display: 'flex', alignItems: 'center', gap: '2', flexShrink: 0 })}>
+        <SelfImproveButtons />
         <ApproveButton />
       </div>
     </header>

@@ -1,7 +1,7 @@
 {
   "name": "pull-review",
   "type": "module",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "private": true,
   "description": "Review GitLab merge requests locally with grouped, beautiful diffs.",
   "bin": {
@@ -50,8 +50,11 @@
     "concurrently": "^10.0.5",
     "d3-hierarchy": "^3.1.2",
     "hono": "^4.13.13",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.52.0",
+    "magic-string": "^0.30.21",
     "open": "^11.0.4",
+    "oxc-parser": "^0.127.0",
     "picomatch": "^4.0.7",
     "pixelmatch": "^7.2.0",
     "react": "^19.3.0",

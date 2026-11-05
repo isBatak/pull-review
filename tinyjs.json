@@ -3,9 +3,10 @@
   "title": "Pull Review",
   "size": "1440x900",
   "id": "dev.pull-review.app",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "icon": "build/icon.png",
   "backend": "out/app-backend/main.js",
+  "readAccess": "~/Library/Application Support/dev.pull-review.app/overlay",
   "frontend": {
     "build": "pnpm run build:app",
     "dist": "out/app-web",
@@ -20,6 +21,8 @@
     "origins": {
       "file://*": [
         "request",
+        "bootReady",
+        "restartApp",
         "shell.open",
         "clip.write",
         "update.check",
@@ -27,6 +30,8 @@
       ],
       "http://127.0.0.1:5173": [
         "request",
+        "bootReady",
+        "restartApp",
         "shell.open",
         "clip.write",
         "update.check",

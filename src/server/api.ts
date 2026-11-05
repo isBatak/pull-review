@@ -4,6 +4,7 @@ import type { ChatSendInput } from '../shared/chat'
 import type { ChatService } from './chat/service'
 import type { GitlabClient } from './gitlab'
 import type { LocalHost } from './local/host'
+import type { SelfImproveService } from './self-improve/service'
 import { Hono } from 'hono'
 import type { FindingStatus } from '../shared/claude-review'
 import { isReviewMode, readSignature } from '../shared/claude-review'
@@ -29,6 +30,8 @@ import { createMrWorkspaces } from './local/mr-workspaces'
 import type { LocalChanges } from '../shared/local-changes'
 import { readLocalFix } from '../shared/local-changes'
 import { createRepoLinks } from './local/repo-link'
+import { registerSelfImproveRoutes } from './self-improve/routes'
+import { SelfImproveError } from './self-improve/service'
 import { grepSymbol } from './local/symbols'
 import { isSearchableSymbol } from '../shared/symbols'
 import { createGitlabClient, GitlabError } from './gitlab'
@@ -46,6 +49,7 @@ export interface ApiOptions {
   resolveToken: TokenResolver
   chat?: ChatService
   host?: LocalHost
+  selfImprove?: SelfImproveService
 }
 
 export interface LocalRepo {
@@ -98,7 +102,7 @@ function readIds(value: string | undefined): number[] {
 }
 
 function errorResponse(c: Context, error: unknown) {
-  if (error instanceof GitlabError || error instanceof ChatError || error instanceof ReviewError)
+  if (error instanceof GitlabError || error instanceof ChatError || error instanceof ReviewError || error instanceof SelfImproveError)
     return c.json({ error: error.message }, error.status as 400)
   if (error instanceof GitError || error instanceof EditorError)
     return c.json({ error: error.message }, 400)
@@ -826,6 +830,8 @@ export function createApi(options: ApiOptions) {
       return c.json({ error: 'Expected id and draft' }, 400)
     return c.json(await chatService().setFindingDraft(chatRef(c), id, draft))
   })
+
+  registerSelfImproveRoutes(api, options.selfImprove)
 
   api.onError((error, c) => errorResponse(c, error))
   app.route('/api', api)

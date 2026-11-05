@@ -99,6 +99,7 @@ export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string
     },
 
     writeFile: (path, text) => tjs.writeFile(path, encoder.encode(text)),
+    writeBinary: (path, bytes) => tjs.writeFile(path, bytes),
     readFile: async (path) => {
       try {
         return new TextDecoder().decode(await tjs.readFile(path))
@@ -123,5 +124,10 @@ export function createTinyLocalHost(loadEnv: () => Promise<Record<string, string
     },
     exists,
     isProcessAlive: async pid => (await run(['/bin/kill', '-0', String(pid)], { cwd: '/', env: {}, timeoutMs: 5000 })).code === 0,
+    async checkModuleSyntax(path) {
+      // tjs compile parses the module without running it.
+      const result = await run([tjs.exePath, 'compile', path, '/dev/null'], { cwd: '/', env: {}, timeoutMs: 30_000 })
+      return result.code === 0 ? null : result.stderr.trim() || `The syntax check failed with code ${result.code}.`
+    },
   }
 }
