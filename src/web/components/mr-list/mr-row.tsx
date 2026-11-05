@@ -1,4 +1,4 @@
-import type { StackInfo } from '../../../shared/stacks'
+import type { StackInfo, StackRowGuides } from '../../../shared/stacks'
 import type { MrSummary } from '../../../shared/types'
 import type { StatusTone } from '../../lib/mr-display'
 import { ExternalLink, GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Layers, MessageSquare, TriangleAlert } from 'lucide-react'
@@ -6,7 +6,7 @@ import { memo } from 'react'
 import { Link } from 'react-router'
 import { css, cx } from 'styled-system/css'
 import { mrAppPath, parseMrRef } from '../../../shared/mr-ref'
-import { parseMrTitle } from '../../../shared/mr-title'
+import { formatStackedTag, parseMrTitle, sameStackedTag } from '../../../shared/mr-title'
 import { describeStackIssue, isWarning } from '../../../shared/stacks'
 import { timeAgo } from '../../lib/format'
 import { mergeStatusOf } from '../../lib/mr-display'
@@ -41,23 +41,39 @@ function stateTime(mr: MrSummary) {
   return `updated ${timeAgo(mr.updatedAt)}`
 }
 
+const TREE_INDENT = 28
+
+function treeColumnLeft(column: number) {
+  return column * TREE_INDENT - 6
+}
+
+function TreeLine({ column, fromIcon }: { column: number, fromIcon?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={css({ position: 'absolute', bottom: '0', borderLeftWidth: '1.5px', borderColor: 'border.strong' })}
+      style={{ left: treeColumnLeft(column), top: fromIcon ? 32 : 0 }}
+    />
+  )
+}
+
 interface MrRowProps {
   mr: MrSummary
   stack: StackInfo | undefined
   defaultBranch: string
   jiraBaseUrl: string
   depth?: number
-  isLastInStack?: boolean
+  guides?: StackRowGuides
   activeTags: Set<string>
   onToggleTag: (tag: string) => void
 }
 
-function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInStack, activeTags, onToggleTag }: MrRowProps) {
+function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, guides, activeTags, onToggleTag }: MrRowProps) {
   const parsed = parseMrTitle(mr.title)
   const status = mergeStatusOf(mr)
   const warnings = stack?.issues.filter(isWarning) ?? []
   const notes = stack?.issues.filter(issue => !isWarning(issue)) ?? []
-  const level = stack?.depth ?? parsed.stackedLevel ?? 0
+  const shownTag = stack ? stack.expectedTag : parsed.stacked
   const ref = parseMrRef(mr.webUrl)
   const appPath = ref ? mrAppPath(ref) : mr.webUrl
 
@@ -73,8 +89,11 @@ function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInS
         transition: 'background 120ms',
         _hover: { bg: 'bg.subtle' },
       }))}
-      style={{ paddingLeft: 16 + depth * 28 }}
+      style={{ paddingLeft: 16 + depth * TREE_INDENT }}
     >
+      {guides?.passThrough.map(column => (
+        <TreeLine key={column} column={column} />
+      ))}
       {depth > 0 && (
         <span
           aria-hidden
@@ -88,12 +107,11 @@ function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInS
             borderBottomLeftRadius: 'md',
             h: '5',
           })}
-          style={{ left: depth * 28 - 6 }}
+          style={{ left: treeColumnLeft(depth) }}
         />
       )}
-      {depth > 0 && !isLastInStack && (
-        <span aria-hidden className={css({ position: 'absolute', top: '0', bottom: '0', borderLeftWidth: '1.5px', borderColor: 'border.strong' })} style={{ left: depth * 28 - 6 }} />
-      )}
+      {depth > 0 && guides?.hasLaterSibling && <TreeLine column={depth} />}
+      {guides?.hasChildren && <TreeLine column={depth + 1} fromIcon />}
       <StateIcon mr={mr} />
       <div className={css({ flex: '1', minW: '0', display: 'flex', flexDir: 'column', gap: '1.5' })}>
         <div className={css({ display: 'flex', alignItems: 'center', gap: '1.5', flexWrap: 'wrap', minW: '0' })}>
@@ -126,7 +144,7 @@ function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInS
           </span>
           <span className={css({ color: 'fg.subtle' })}>{stateTime(mr)}</span>
           {parsed.jiraKeys.map(key => <JiraChip key={key} jiraKey={key} baseUrl={jiraBaseUrl} />)}
-          {level > 0 && (
+          {shownTag && (
             <WithTooltip label={[...warnings, ...notes].map(describeStackIssue).join(' ') || `Stacked on ${mr.targetBranch}`}>
               <span
                 className={css({
@@ -147,17 +165,17 @@ function MrRowImpl({ mr, stack, defaultBranch, jiraBaseUrl, depth = 0, isLastInS
                 {warnings.length ? <TriangleAlert /> : <Layers />}
                 Stacked
                 {' '}
-                {level}
-                {parsed.stackedLevel !== null && parsed.stackedLevel !== level && (
+                {formatStackedTag(shownTag)}
+                {parsed.stacked && !sameStackedTag(parsed.stacked, shownTag) && (
                   <span className={css({ fontWeight: 'medium', opacity: 0.8 })}>
                     {'· title says '}
-                    {parsed.stackedLevel}
+                    {formatStackedTag(parsed.stacked)}
                   </span>
                 )}
               </span>
             </WithTooltip>
           )}
-          {level === 0 && warnings.length > 0 && (
+          {!shownTag && warnings.length > 0 && (
             <WithTooltip label={warnings.map(describeStackIssue).join(' ')}>
               <span className={css({ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: '1', h: '5', px: '1.5', borderRadius: 'sm', fontSize: '2xs', fontWeight: 'semibold', color: 'warning.fg', bg: 'warning.subtle' })}>
                 <TriangleAlert />

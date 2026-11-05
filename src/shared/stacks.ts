@@ -1,17 +1,25 @@
+import type { StackedTag } from './mr-title'
 import type { MrSummary } from './types'
-import { parseMrTitle } from './mr-title'
+import { formatStackedTag, parseMrTitle, sameStackedTag } from './mr-title'
 
 export type StackIssue
-  = | { kind: 'missing-tag', depth: number }
-    | { kind: 'wrong-level', tagged: number, depth: number }
-    | { kind: 'tagged-but-not-stacked', tagged: number }
+  = | { kind: 'missing-tag', expected: StackedTag }
+    | { kind: 'wrong-level', tagged: StackedTag, expected: StackedTag }
+    | { kind: 'tagged-but-not-stacked', tagged: StackedTag }
     | { kind: 'parent-not-open', branch: string }
 
 export interface StackInfo {
   depth: number
+  expectedTag: StackedTag | null
   parent: MrSummary | null
   baseBranch: string
   issues: StackIssue[]
+}
+
+export interface StackRowGuides {
+  passThrough: number[]
+  hasLaterSibling: boolean
+  hasChildren: boolean
 }
 
 export interface MrStack {
@@ -31,33 +39,35 @@ export function analyzeStacks(mrs: MrSummary[], defaultBranch: string): Map<numb
     const cached = result.get(mr.iid)
     if (cached)
       return cached
-    const tagged = parseMrTitle(mr.title).stackedLevel
+    const tagged = parseMrTitle(mr.title).stacked
     const issues: StackIssue[] = []
     let info: StackInfo
 
     if (mr.targetBranch === defaultBranch) {
       if (tagged !== null)
         issues.push({ kind: 'tagged-but-not-stacked', tagged })
-      info = { depth: 0, parent: null, baseBranch: defaultBranch, issues }
+      info = { depth: 0, expectedTag: null, parent: null, baseBranch: defaultBranch, issues }
     }
     else {
       const parent = bySourceBranch.get(mr.targetBranch)
       let depth = 1
+      let expectedTag = startLevel(1, tagged)
       let baseBranch = mr.targetBranch
       if (parent && !seen.has(parent.iid)) {
         seen.add(parent.iid)
         const parentInfo = resolve(parent, seen)
         depth = Math.max(1, parentInfo.depth + 1)
+        expectedTag = expectedChildTag(parentInfo.expectedTag, parseMrTitle(parent.title).stacked, tagged)
         baseBranch = parentInfo.baseBranch
       }
       else if (!parent) {
         issues.push({ kind: 'parent-not-open', branch: mr.targetBranch })
       }
       if (tagged === null)
-        issues.push({ kind: 'missing-tag', depth })
-      else if (tagged !== depth)
-        issues.push({ kind: 'wrong-level', tagged, depth })
-      info = { depth, parent: parent ?? null, baseBranch, issues }
+        issues.push({ kind: 'missing-tag', expected: expectedTag })
+      else if (!sameStackedTag(tagged, expectedTag))
+        issues.push({ kind: 'wrong-level', tagged, expected: expectedTag })
+      info = { depth, expectedTag, parent: parent ?? null, baseBranch, issues }
     }
 
     result.set(mr.iid, info)
@@ -67,6 +77,35 @@ export function analyzeStacks(mrs: MrSummary[], defaultBranch: string): Map<numb
   for (const mr of mrs)
     resolve(mr, new Set([mr.iid]))
   return result
+}
+
+function startLevel(level: number, tagged: StackedTag | null): StackedTag {
+  return { level, part: tagged?.part ?? null }
+}
+
+function expectedChildTag(parentExpected: StackedTag | null, parentTagged: StackedTag | null, tagged: StackedTag | null): StackedTag {
+  const parentLevel = parentExpected?.level ?? 0
+  const continuesParts = tagged?.part != null && parentTagged?.part != null && tagged.level === parentTagged.level
+  if (continuesParts)
+    return { level: parentLevel, part: parentTagged.part! + 1 }
+  return startLevel(parentLevel + 1, tagged)
+}
+
+export function stackGuides(depths: number[]): StackRowGuides[] {
+  const hasLaterAtDepth = (index: number, depth: number) => {
+    for (let next = index + 1; next < depths.length; next++) {
+      if (depths[next]! < depth)
+        return false
+      if (depths[next] === depth)
+        return true
+    }
+    return false
+  }
+  return depths.map((depth, index) => ({
+    passThrough: Array.from({ length: Math.max(0, depth - 1) }, (_, offset) => offset + 1).filter(column => hasLaterAtDepth(index, column)),
+    hasLaterSibling: depth > 0 && hasLaterAtDepth(index, depth),
+    hasChildren: depths[index + 1] === depth + 1,
+  }))
 }
 
 export function groupIntoStacks(mrs: MrSummary[], info: Map<number, StackInfo>): MrListEntry[] {
@@ -121,11 +160,11 @@ export function isWarning(issue: StackIssue) {
 export function describeStackIssue(issue: StackIssue): string {
   switch (issue.kind) {
     case 'missing-tag':
-      return `Stacked ${issue.depth} level${issue.depth === 1 ? '' : 's'} deep, but the title has no [stacked-${issue.depth}] tag.`
+      return `Stacked on another merge request, but the title has no [stacked-${formatStackedTag(issue.expected)}] tag.`
     case 'wrong-level':
-      return `Title says [stacked-${issue.tagged}], but it is ${issue.depth} level${issue.depth === 1 ? '' : 's'} deep. A parent may have been merged.`
+      return `Title says [stacked-${formatStackedTag(issue.tagged)}], but its place in the stack is [stacked-${formatStackedTag(issue.expected)}]. A parent may have been merged.`
     case 'tagged-but-not-stacked':
-      return `Title says [stacked-${issue.tagged}], but it targets the default branch.`
+      return `Title says [stacked-${formatStackedTag(issue.tagged)}], but it targets the default branch.`
     case 'parent-not-open':
       return `Targets ${issue.branch}, which has no open merge request.`
   }

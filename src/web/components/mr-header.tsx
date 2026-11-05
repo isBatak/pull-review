@@ -7,7 +7,7 @@ import { badge } from 'styled-system/recipes'
 import { useApprovalActions, useApprovals } from '../hooks/use-merge-request'
 import { useProjectInfo } from '../hooks/use-project'
 import { diffStatsByGroup } from '../../shared/grouping'
-import { parseMrTitle } from '../../shared/mr-title'
+import { formatStackedTag, parseMrTitle } from '../../shared/mr-title'
 import { timeAgo } from '../lib/format'
 import { homePath } from '../lib/last-home'
 import { useSettings } from '../lib/settings'
@@ -183,11 +183,11 @@ export function MrHeader({ files, groups, localStatus }: MrHeaderProps) {
             {mergeRequest.ref.iid}
           </span>
           {title.jiraKeys.map(key => <JiraChip key={key} jiraKey={key} baseUrl={jiraBaseUrl} />)}
-          {(title.stackedLevel !== null || (defaultBranch !== undefined && mergeRequest.targetBranch !== defaultBranch)) && (
-            <WithTooltip label={`Targets ${mergeRequest.targetBranch}${title.stackedLevel !== null ? `. The title marks it as stacked level ${title.stackedLevel}.` : '.'}`}>
+          {(title.stacked !== null || (defaultBranch !== undefined && mergeRequest.targetBranch !== defaultBranch)) && (
+            <WithTooltip label={`Targets ${mergeRequest.targetBranch}${title.stacked !== null ? `. The title marks it as stacked level ${formatStackedTag(title.stacked)}.` : '.'}`}>
               <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', h: '5', px: '1.5', flexShrink: 0, borderRadius: 'sm', fontSize: '2xs', fontWeight: 'semibold', color: 'fg.muted', bg: 'bg.muted', '& svg': { w: '3', h: '3' } })}>
                 <Layers />
-                {title.stackedLevel !== null ? `Stacked ${title.stackedLevel}` : 'Stacked'}
+                {title.stacked !== null ? `Stacked ${formatStackedTag(title.stacked)}` : 'Stacked'}
               </span>
             </WithTooltip>
           )}

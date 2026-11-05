@@ -1,7 +1,7 @@
 import type { MrStack, StackInfo } from '../../../shared/stacks'
 import { GitBranch, Layers, TriangleAlert } from 'lucide-react'
 import { css } from 'styled-system/css'
-import { isWarning } from '../../../shared/stacks'
+import { isWarning, stackGuides } from '../../../shared/stacks'
 import { MrRow } from './mr-row'
 
 interface StackGroupProps {
@@ -18,6 +18,7 @@ export function StackGroup({ stack, stackInfo, defaultBranch, jiraBaseUrl, activ
   const baseDepth = stack.members[0]?.depth ?? 0
   const warningCount = stack.members.filter(member => stackInfo.get(member.mr.iid)?.issues.some(isWarning)).length
   const base = stack.root.targetBranch
+  const guides = stackGuides(stack.members.map(member => member.depth - baseDepth))
 
   return (
     <div className={css({ position: 'relative', m: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'lg', bg: 'bg.surface', overflow: 'hidden' })}>
@@ -44,24 +45,20 @@ export function StackGroup({ stack, stackInfo, defaultBranch, jiraBaseUrl, activ
           </span>
         )}
       </div>
-      {stack.members.map((member, index) => {
-        const next = stack.members[index + 1]
-        const relativeDepth = member.depth - baseDepth
-        return (
-          <div key={member.mr.iid} className={css({ '& + &': { borderTopWidth: '1px', borderColor: 'border.subtle' } })}>
-            <MrRow
-              mr={member.mr}
-              stack={stackInfo.get(member.mr.iid)}
-              defaultBranch={defaultBranch}
-              jiraBaseUrl={jiraBaseUrl}
-              depth={relativeDepth}
-              isLastInStack={!next || next.depth - baseDepth < relativeDepth}
-              activeTags={activeTags}
-              onToggleTag={onToggleTag}
-            />
-          </div>
-        )
-      })}
+      {stack.members.map((member, index) => (
+        <div key={member.mr.iid} className={css({ '& + &': { borderTopWidth: '1px', borderColor: 'border.subtle' } })}>
+          <MrRow
+            mr={member.mr}
+            stack={stackInfo.get(member.mr.iid)}
+            defaultBranch={defaultBranch}
+            jiraBaseUrl={jiraBaseUrl}
+            depth={member.depth - baseDepth}
+            guides={guides[index]}
+            activeTags={activeTags}
+            onToggleTag={onToggleTag}
+          />
+        </div>
+      ))}
     </div>
   )
 }

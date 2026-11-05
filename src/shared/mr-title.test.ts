@@ -8,8 +8,15 @@ describe('parseMrTitle', () => {
       draft: false,
       apps: ['WEB', 'APP', 'OFFICE', 'ADMIN', 'EXP', 'DS', 'DATA', 'AMPHORA', 'REPO'].map(name => ({ name, qualifier: null })),
       jiraKeys: ['EN-5655'],
-      stackedLevel: 2,
+      stacked: { level: 2, part: null },
     })
+  })
+
+  it('reads dotted stacked tags', () => {
+    const parsed = parseMrTitle('[APP] refactor: rename app queries [stacked-3.1]')
+    expect(parsed.stacked).toEqual({ level: 3, part: 1 })
+    expect(parsed.text).toBe('refactor: rename app queries')
+    expect(parseMrTitle('[stacked-3.2] fix').apps).toEqual([])
   })
 
   it('keeps versions and bump types as qualifiers', () => {
@@ -26,7 +33,7 @@ describe('parseMrTitle', () => {
   })
 
   it('handles titles without tags and drops placeholder jira keys', () => {
-    expect(parseMrTitle('feat: alerts gating for pro')).toEqual({ text: 'feat: alerts gating for pro', draft: false, apps: [], jiraKeys: [], stackedLevel: null })
+    expect(parseMrTitle('feat: alerts gating for pro')).toEqual({ text: 'feat: alerts gating for pro', draft: false, apps: [], jiraKeys: [], stacked: null })
     expect(parseMrTitle('[CI][REPO] feat: label bot [EN-0000]').jiraKeys).toEqual([])
   })
 

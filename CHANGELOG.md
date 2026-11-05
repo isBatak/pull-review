@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.18 (2026-11-05)
+
+- Stacked tags can use parts, such as `[stacked-3.1]` and `[stacked-3.2]`. Parts in a row count as one level, so the next merge request is `[stacked-4]`.
+- Fixed: the lines in a stack now connect each merge request to the one it is stacked on. Lines no longer run past the last child.
+
 ## 0.2.17 (2026-10-28)
 
 - New Releases page (beta), opened from the start page. Pick a tag, choose commits from `develop` and the app makes the hotfix in your local folder, step by step. It helps with conflicts and remembers where you stopped.
