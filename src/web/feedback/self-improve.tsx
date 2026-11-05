@@ -18,6 +18,7 @@ import { startPicker } from './picker'
 import { captureWindow } from './screenshot'
 
 export const FEEDBACK_PATH = '/feedback'
+export const RIGHTS_NOTICE = 'Claude changes your copy of the app with your Claude Code settings, so it can edit files and run commands on this computer.'
 
 type Mode
   = | { kind: 'idle' }
@@ -105,7 +106,7 @@ function ContextPopover({ context, omitted, onToggle }: { context: FeedbackConte
   )
 }
 
-function Composer({ context, onClose, onSent }: { context: FeedbackContext, onClose: () => void, onSent: () => void }) {
+function Composer({ context, firstUse, onClose, onSent }: { context: FeedbackContext, firstUse: boolean, onClose: () => void, onSent: () => void }) {
   const [request, setRequest] = useState('')
   const [omitted, setOmitted] = useState<Set<ContextDetail>>(() => new Set())
   const [pointedAt, setPointedAt] = useState(context.element?.label ?? null)
@@ -182,6 +183,7 @@ function Composer({ context, onClose, onSent }: { context: FeedbackContext, onCl
         </WithTooltip>
       </div>
       {error && <p className={css({ mt: '2', px: '1', fontSize: 'xs', color: 'danger.fg' })}>{error}</p>}
+      {firstUse && !error && <p className={css({ mt: '2', px: '1', fontSize: 'xs', color: 'fg.subtle' })}>{RIGHTS_NOTICE}</p>}
       <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '2', mt: '2' })}>
         {pointedAt
           ? (
@@ -286,6 +288,7 @@ export function SelfImproveProvider({ children }: { children: ReactNode }) {
       {mode.kind === 'composing' && (
         <Composer
           context={mode.context}
+          firstUse={state.data?.changes.length === 0}
           onClose={() => setMode({ kind: 'idle' })}
           onSent={() => {
             setMode({ kind: 'sent' })
@@ -305,10 +308,10 @@ export function SelfImproveButtons() {
     return null
   return (
     <>
-      <IconButton label="Point at something to change" onClick={controls.startPicking}>
+      <IconButton label="Point at something to change (beta)" onClick={controls.startPicking}>
         <Crosshair />
       </IconButton>
-      <WithTooltip label="Feedback">
+      <WithTooltip label="Feedback (beta)">
         <Link
           to={FEEDBACK_PATH}
           aria-label="Feedback"

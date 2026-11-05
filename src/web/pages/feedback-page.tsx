@@ -13,7 +13,7 @@ import { ThinkingTimeline } from '../components/thinking-timeline'
 import { Button, WithTooltip } from '../components/ui/button'
 import { ActionError, ChangeDiff, PrChip, Replies, ReplyBox, SendPr } from '../feedback/change-actions'
 import { buildFeedbackContext } from '../feedback/context'
-import { SelfImproveButtons } from '../feedback/self-improve'
+import { RIGHTS_NOTICE, SelfImproveButtons } from '../feedback/self-improve'
 import { api } from '../lib/api'
 import { homePath } from '../lib/last-home'
 import { useTheme } from '../lib/preferences'
@@ -287,7 +287,7 @@ function RequestBox({ onSent }: { onSent: () => void }) {
         className={css({ w: 'full', resize: 'none', bg: 'transparent', outline: 'none', fontSize: 'md', lineHeight: '1.5', color: 'fg.default', _placeholder: { color: 'fg.subtle' } })}
       />
       <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3' })}>
-        <span className={css({ fontSize: 'xs', color: error ? 'danger.fg' : 'fg.subtle' })}>{error ?? 'Claude changes your copy of the app on this computer.'}</span>
+        <span className={css({ fontSize: 'xs', color: error ? 'danger.fg' : 'fg.subtle' })}>{error ?? RIGHTS_NOTICE}</span>
         <WithTooltip label="Send to Claude" shortcut="⌘↵">
           <button
             type="button"

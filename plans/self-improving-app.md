@@ -19,7 +19,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
 - [x] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
 - [x] 13. CLI: give the CLI its own overlay and the same Feedback flow.
-- [ ] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
+- [x] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
 
 ## Reference app
 
@@ -369,6 +369,24 @@ Runs when the app starts on a new version and an older overlay has changes in `a
 - Unit tests for: prompt building, context trimming, `changes.json` state moves, source tree from source maps, patch prefix stripping, the "applies alone or depends on" choice, and the merged-PR check.
 - README: a "Self-improve" section covering what it does, where files live, how to turn it off, and that Claude runs with the user's own rights.
 - Ship the header buttons with a "Beta" label, like the Releases page.
+
+**Result (2026-11-05):**
+
+- README: new "Feedback and local changes (beta)" section (how to use it, what goes to Claude, the rights warning in bold, how it works, how to skip or turn off local changes, PRs, updates). The desktop security notes now list `bootReady` and `restartApp` and explain `readAccess`.
+- The rights notice ("Claude changes your copy of the app with your Claude Code settings, so it can edit files and run commands on this computer.") shows under the request box on the Feedback page, and in the composer until the first request exists.
+- Header buttons say "(beta)" in their tooltips. The Feedback page has the Beta badge.
+- Version 0.2.18 in `package.json` and `tinyjs.json`, with a `CHANGELOG.md` entry (shortcuts and commands in backticks).
+- Final check: 60 test files, 431 tests, type check, CLI build, desktop build. The built app starts, and `pull-review --help` shows 0.2.18 and `--shipped`.
+
+## Status
+
+All 14 steps are done on the `self-improving-app` branch. Not yet done or seen:
+
+- A real "Send as PR" against GitHub. All PR tests used local repositories and a fake `gh`.
+- An update between two real packaged versions. Replay was tested with the Node host and the CLI.
+- Clicking Reload or Restart inside the desktop app window, and holding ⌥ at launch.
+- A ready check with a timer for the CLI's browser page.
+- Merging to `main`, which releases 0.2.18 through CI.
 
 ## Risks and open points
 

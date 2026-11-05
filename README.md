@@ -47,8 +47,9 @@ How it fits together:
 
 Security settings for the desktop app:
 
-- `tinyjs.json` `"api"` lets the page call only `request`, `shell.open`, `clip.write`, `update.check` and `update.install`. tinyjs has about 140 other built-in calls, such as AppleScript, secrets and clipboard reading, and the page can't reach them. Add a call to both origin lists only if the frontend really needs it.
+- `tinyjs.json` `"api"` lets the page call only `request`, `bootReady`, `restartApp`, `shell.open`, `clip.write`, `update.check` and `update.install`. tinyjs has about 140 other built-in calls, such as AppleScript, secrets and clipboard reading, and the page can't reach them. Add a call to both origin lists only if the frontend really needs it.
 - `onNavigate` in `src/tiny/app.ts` keeps the window on the app's own pages. Web and mail links open in your default apps, and other links are blocked.
+- `"readAccess"` lets the window read `~/Library/Application Support/dev.pull-review.app/overlay`, where your local changes live (see Feedback and local changes). Nothing else outside the app is readable.
 - Production builds carry a Content Security Policy (`build/content-security-policy.ts`), so the page runs only its own scripts.
 - The desktop scripts check that the installed tinyjs is the version pinned in `package.json` (`pinned.tinyjs`). Read the tinyjs changes before you move the pin.
 
@@ -86,6 +87,24 @@ The review page has a Claude chat panel. Open it with the sparkles button in the
 - Select lines in a diff (click a line number, then Shift-click another). While the chat is open they are added to your question right away. To add them only with the **Ask Claude** button instead, change "Selected lines in the Claude chat" in Settings, AI. To include several parts, click the sparkles button in the file header to keep the current lines, then select the next ones.
 - To let Claude read whole files, add a local repository: click **Add folder** in the chat, or use Settings, General, Local repositories. The CLI fills this in when you start it inside a matching clone. The app then makes a git worktree at the merge request's head commit in `~/Library/Caches/pull-review`, fetching `refs/merge-requests/<iid>/head` if needed. Your own checkout and branch stay untouched.
 - Worktrees are removed when a merge request's chat is unused for 30 minutes, when the CLI quits, and on the next start after a crash or after the desktop app quits.
+
+## Feedback and local changes (beta)
+
+Ask for a change to Pull Review itself, and your installed `claude` makes it in your own copy of the app. The buttons show up only when [Claude Code](https://claude.com/claude-code) is installed.
+
+- Click the crosshair in the header, then click the part of the app you mean. Hold ⌥ to see its size, padding and margin. Write what should change and send it with ⌘↵. You can also write a request on the Feedback page (the speech bubble).
+- Each request carries context: the page, the window size, the theme, the element you clicked (with the source line that rendered it) and a picture of the window. Open Context in the request box to leave any of it out.
+- Claude works on one request at a time. The Feedback page shows its steps while it works. When it is done, a toast offers Reload, or Restart when the backend changed or local changes were off.
+- **Claude runs with your own Claude Code settings and can edit files and run commands like it does in a terminal.** It is told to stay in the local changes folder, but nothing enforces that.
+- A done change opens to show Claude's summary, a diff, a box for follow-ups, Undo and Send as PR. Requests that need you show Claude's question or the error, with Try again and a reply box.
+
+How it works:
+
+- Release builds are not minified and ship source maps that keep the app's own source (`build/own-source-maps.ts`). Every JSX element carries `data-sourcery="src/…:line:column"` (`build/sourcery/`).
+- Local changes live in an overlay, a git repository with `build/` (a copy of the shipped files) and `source/` (the source rebuilt from the maps). Each change is one commit, so changes stack and Undo is `git revert`. The desktop app keeps it in `~/Library/Application Support/dev.pull-review.app/overlay/<version>`, the CLI in `…/cli-overlay/<version>` on macOS or `$XDG_DATA_HOME/pull-review/cli-overlay/<version>` elsewhere.
+- At start, the app loads the overlay's backend and page when local changes are on. Before the reload toast, every changed script gets a syntax check, and a changed desktop backend is test-loaded in a separate process. If the changed page does not start within 10 seconds, or the backend crashes, local changes turn off and the Feedback page says which change broke the app. Hold ⌥ while the desktop app opens, or run `pull-review --shipped`, to skip local changes once. Settings, General has "Use local changes" and "Open folder".
+- Send as PR uses the GitHub CLI (`gh`). It forks `isBatak/pull-review`, applies only the `source/` part of the change on top of `main` with `git apply --3way`, and opens a pull request. A change that builds on an earlier one stacks on that pull request's branch. Without `gh`, use Copy patch or Open an issue. The screenshot is never sent.
+- When the app updates, changes whose pull request landed in the new release are marked "In the app". Other changes are moved: their source patch is applied to the new version and Claude redoes the build part. Old overlays are deleted 30 days later.
 
 ## Local repositories
 
