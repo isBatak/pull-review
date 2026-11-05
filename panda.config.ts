@@ -180,6 +180,7 @@ export default defineConfig({
         },
         zIndex: {
           sticky: { value: 10 },
+          floating: { value: 20 },
           overlay: { value: 40 },
           modal: { value: 50 },
           popover: { value: 60 },

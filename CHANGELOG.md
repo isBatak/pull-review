@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.19 (2026-11-05)
+
+- Fixed: a file's header covered the review toolbar while pinned to the top of the code.
+
 ## 0.2.18 (2026-11-05)
 
 - Stacked tags can use parts, such as `[stacked-3.1]` and `[stacked-3.2]`. Parts in a row count as one level, so the next merge request is `[stacked-4]`.
