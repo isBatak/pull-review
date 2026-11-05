@@ -1,12 +1,21 @@
 # Changelog
 
-## 0.2.18 (2026-11-05)
+## 0.2.20 (2026-11-05)
 
 - New Feedback page (beta) for changing Pull Review itself with your installed Claude Code. Click the crosshair in the header, click the part of the app you mean (hold `⌥` to measure it), and write what should change. Claude makes the change in your own copy of the app, and a toast offers Reload or Restart when it is done.
 - Each change can be undone, answered with a follow-up, viewed as a diff, or sent as a pull request with the GitHub CLI (`gh`). Without `gh`, copy the patch or open an issue instead.
 - Your changes move along when the app updates. Changes whose pull request is already in the release are marked "In the app".
 - If a change breaks the app, it starts without your changes and the Feedback page says which one did it. Hold `⌥` while the app opens, or run `pull-review --shipped`, to skip your changes once. Settings, General can turn them off.
 - Claude runs with your own Claude Code settings, so it can edit files and run commands on this computer.
+
+## 0.2.19 (2026-11-05)
+
+- Fixed: a file's header covered the review toolbar while pinned to the top of the code.
+
+## 0.2.18 (2026-11-05)
+
+- Stacked tags can use parts, such as `[stacked-3.1]` and `[stacked-3.2]`. Parts in a row count as one level, so the next merge request is `[stacked-4]`.
+- Fixed: the lines in a stack now connect each merge request to the one it is stacked on. Lines no longer run past the last child.
 
 ## 0.2.17 (2026-10-28)
 

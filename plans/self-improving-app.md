@@ -375,7 +375,7 @@ Runs when the app starts on a new version and an older overlay has changes in `a
 - README: new "Feedback and local changes (beta)" section (how to use it, what goes to Claude, the rights warning in bold, how it works, how to skip or turn off local changes, PRs, updates). The desktop security notes now list `bootReady` and `restartApp` and explain `readAccess`.
 - The rights notice ("Claude changes your copy of the app with your Claude Code settings, so it can edit files and run commands on this computer.") shows under the request box on the Feedback page, and in the composer until the first request exists.
 - Header buttons say "(beta)" in their tooltips. The Feedback page has the Beta badge.
-- Version 0.2.18 in `package.json` and `tinyjs.json`, with a `CHANGELOG.md` entry (shortcuts and commands in backticks).
+- Version 0.2.20 in `package.json` and `tinyjs.json`, with a `CHANGELOG.md` entry (shortcuts and commands in backticks).
 - Final check: 60 test files, 431 tests, type check, CLI build, desktop build. The built app starts, and `pull-review --help` shows 0.2.18 and `--shipped`.
 
 ## Status
@@ -386,7 +386,7 @@ All 14 steps are done on the `self-improving-app` branch. Not yet done or seen:
 - An update between two real packaged versions. Replay was tested with the Node host and the CLI.
 - Clicking Reload or Restart inside the desktop app window, and holding ⌥ at launch.
 - A ready check with a timer for the CLI's browser page.
-- Merging to `main`, which releases 0.2.18 through CI.
+- Merging to `main`, which releases 0.2.20 through CI.
 
 ## Risks and open points
 

@@ -26,7 +26,7 @@ const panel = css({
   bottom: '2',
   left: '50%',
   transform: 'translateX(-50%)',
-  zIndex: 'sticky',
+  zIndex: 'floating',
   display: 'flex',
   alignItems: 'center',
   gap: '1',
