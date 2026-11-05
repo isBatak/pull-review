@@ -10,6 +10,7 @@ import { ReleasesPage } from './pages/releases-page'
 import { ReviewPage } from './pages/review-page'
 import { UpdateDialog } from './components/update-dialog'
 import { FEEDBACK_PATH, SelfImproveProvider } from './feedback/self-improve'
+import { api } from './lib/api'
 import { preloadDiffHighlighter } from './lib/code-tokens'
 import { callApp, isTinyApp, routeExternalLinks } from './lib/platform'
 import { useZoomController } from './lib/zoom'
@@ -38,7 +39,8 @@ function ZoomController() {
 
 function BootReady() {
   useEffect(() => {
-    void callApp(BOOT_READY_METHOD, { url: location.href }).catch(() => null)
+    const reported = isTinyApp ? callApp(BOOT_READY_METHOD, { url: location.href }) : api.markApplied()
+    void reported.catch(() => null)
   }, [])
   return null
 }
@@ -63,7 +65,7 @@ createRoot(document.getElementById('root')!).render(
         </SelfImproveProvider>
       </Router>
       {isTinyApp && <UpdateDialog />}
-      {isTinyApp && <BootReady />}
+      <BootReady />
     </QueryClientProvider>
   </StrictMode>,
 )

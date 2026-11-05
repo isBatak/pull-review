@@ -43,6 +43,7 @@ export interface SelfImproveOptions {
   timeoutMs?: number
   gh?: Promise<string | null>
   remoteUrl?: (repo: string) => string
+  openFolderCommand?: string
 }
 
 export type SelfImproveService = ReturnType<typeof createSelfImproveService>
@@ -330,8 +331,10 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     return runner.start()
   }
 
-  function markApplied() {
-    return updateChanges((changes) => {
+  async function markApplied() {
+    if (options.running && !options.running().overlay)
+      return
+    await updateChanges((changes) => {
       for (const change of changes) {
         if (!change.needsReload || change.version !== config.version)
           continue
@@ -405,6 +408,6 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     updateChanges,
     screenshotPath,
     clearBootFailure: () => host.remove(bootFailureFile),
-    openFolder: () => host.launch(['/usr/bin/open', config.root], {}),
+    openFolder: () => host.launch([options.openFolderCommand ?? '/usr/bin/open', config.root], {}),
   }
 }

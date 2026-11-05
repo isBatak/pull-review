@@ -129,6 +129,7 @@ export const api = {
   sendChangePr: (id: string) => call<LocalChange>(null, `/self-improve/changes/${encodeURIComponent(id)}/pr`, { method: 'POST' }),
   changePatch: (id: string) => call<{ patch: string, issueUrl: string }>(null, `/self-improve/changes/${encodeURIComponent(id)}/patch`),
   refreshPrs: () => call<{ ok: true }>(null, '/self-improve/prs/refresh', { method: 'POST' }),
+  markApplied: () => call<{ ok: true }>(null, '/self-improve/applied', { method: 'POST' }),
   setLocalChangesActive: (on: boolean) => call<{ ok: true }>(null, '/self-improve/active', { method: 'POST', body: { on } }),
   dismissBootFailure: () => call<{ ok: true }>(null, '/self-improve/boot-failure/dismiss', { method: 'POST' }),
   openOverlayFolder: () => call<{ ok: true }>(null, '/self-improve/open-folder', { method: 'POST' }),

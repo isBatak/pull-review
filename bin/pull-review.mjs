@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-import '../out/cli.mjs'
+import '../out/loader.mjs'

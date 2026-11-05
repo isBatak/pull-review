@@ -38,10 +38,9 @@ export function createApp(options: AppOptions = {}) {
 
   const webRoot = options.webRoot
   if (webRoot && existsSync(webRoot)) {
-    const indexHtml = readFile(join(webRoot, 'index.html'), 'utf8')
     app.use('/assets/*', serveStatic({ root: webRoot }))
     app.get('/favicon.svg', serveStatic({ root: webRoot }))
-    app.get('*', async c => c.html(await indexHtml))
+    app.get('*', async c => c.html(await readFile(join(webRoot, 'index.html'), 'utf8')))
   }
 
   return app

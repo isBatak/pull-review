@@ -79,6 +79,18 @@ describe('the self-improve service', () => {
     expect((await statuses()).a).toBe('applied')
   })
 
+  it('marks nothing applied while the shipped build runs', async () => {
+    const host = createNodeLocalHost()
+    const shippedOnly = createSelfImproveService(host, createGitTools(host), { root: join(root, 'overlay'), version: '1.2.3', parts: [{ name: 'app-web', from: join(root, 'shipped') }] }, { claudePath: Promise.resolve(null), running: () => ({ overlay: false, canRestart: false }) })
+    const change = await shippedOnly.create({ request: 'a', context })
+    await shippedOnly.runQueue()
+    await shippedOnly.updateChanges((changes) => {
+      Object.assign(changes[0]!, { status: 'ready', needsReload: true })
+    })
+    await shippedOnly.markApplied()
+    expect((await shippedOnly.state()).changes.find(item => item.id === change.id)).toMatchObject({ status: 'ready', needsReload: true })
+  })
+
   it('reports the overlay and a failed start, and turns local changes on only when they exist', async () => {
     expect(await service.state()).toMatchObject({ active: false, overlayDir: null, bootFailure: null, changes: [], run: null, reload: null })
     await expect(service.setActive(true)).rejects.toThrow(/no local changes/)

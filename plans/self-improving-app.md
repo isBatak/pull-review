@@ -18,7 +18,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
 - [x] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
 - [x] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
-- [ ] 13. CLI: give the CLI its own overlay and the same Feedback flow.
+- [x] 13. CLI: give the CLI its own overlay and the same Feedback flow.
 - [ ] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
 
 ## Reference app
@@ -351,6 +351,18 @@ Runs when the app starts on a new version and an older overlay has changes in `a
 - Same overlay module with the CLI root. `bin/pull-review.mjs` checks the active CLI overlay and imports its `cli.mjs` when the version matches. The server serves the overlay's `web/` folder.
 - Same Feedback page and picker (it's the same web code). The toast says "Restart the CLI" for backend changes.
 - The CLI's change list is separate from the app's.
+
+**Result (2026-11-05):**
+
+- `bin/pull-review.mjs` now imports `out/loader.mjs`, built from `src/server/cli-loader.ts` as a separate tsdown build. With both entries in one build, tsdown would split shared code into a chunk that the overlay's single `cli.mjs` could not find.
+- The loader imports the overlay's `build/cli.mjs` when `cli-overlay/active` names this version and `--shipped` isn't given, else the shipped `out/cli.mjs`. It sets `__pullReviewOverlay` and `__pullReviewShipped` (declared in `src/shared/self-improve-globals.d.ts`, which replaces the tiny-only declaration).
+- Node can catch a module that throws while loading, unlike txiki.js. So a broken overlay prints "The changed command line tool did not start: … Your local changes are off now. Starting pull-review as it shipped.", writes `active` = `off` and `boot-failure.json`, and runs the shipped CLI. The CLI then marks the newest change `broke-app` through `__pullReviewStartFailure`.
+- The overlay's `cli.mjs` finds `web/` next to itself, so the server serves the overlay page with no extra code. New overlays still copy the shipped files through `__pullReviewShipped`. `index.html` is read per request now, so a reload picks up a changed page.
+- `--shipped`: new CLI option, "Run without your local changes from the Feedback page".
+- Applied: in a browser the page calls `POST /self-improve/applied` once React has mounted (the desktop app keeps using `bootReady`). The service only marks changes applied when an overlay is actually running (`running().overlay`), so loading the shipped page never counts. The CLI reports `canRestart: false`, so the toast says "Reload" for page-only changes while the overlay runs, and otherwise says to restart in the terminal.
+- `cliOverlayRoot()` and `openFolderCommand()` (`open` on macOS, `xdg-open` elsewhere) are in `src/server/self-improve/cli-overlay.ts`, with tests.
+- There's no ready check with a timer for the browser page. If a changed page breaks, the user runs `pull-review --shipped` and undoes it from the Feedback page.
+- Checked with the real CLI build: an active overlay served the changed page, `--shipped` served the original, and a throwing `cli.mjs` fell back with the message, turned local changes off and recorded why.
 
 ### Step 14. Docs, tests and release
 

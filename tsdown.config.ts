@@ -16,5 +16,6 @@ const shared: UserConfig = {
 
 export default defineConfig([
   { ...shared, entry: { cli: 'src/server/cli.ts' }, platform: 'node', target: 'node20' },
+  { ...shared, entry: { loader: 'src/server/cli-loader.ts' }, platform: 'node', target: 'node20' },
   { ...shared, entry: { main: 'src/tiny/main.ts' }, outDir: 'out/app-backend', clean: true, platform: 'browser', target: 'es2023' },
 ])

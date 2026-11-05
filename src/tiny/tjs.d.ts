@@ -27,7 +27,6 @@ interface TinyApp {
   quit: () => void
 }
 
-declare var __pullReviewOverlay: string | undefined
 
 declare const tjs: {
   env: Record<string, string | undefined>
