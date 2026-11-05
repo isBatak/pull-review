@@ -16,7 +16,7 @@ This file is the single plan for the whole feature. Update the todo list and the
 - [x] 8. Agent runner: queue requests, run `claude` in the overlay, stream progress to the card, and commit each change.
 - [x] 9. Reload toast: show "A new version of the app is ready" with Reload, or Restart for backend changes.
 - [x] 10. Change actions: add View diff, Reply, Undo, Retry and Dismiss on each card.
-- [ ] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
+- [x] 11. Send as PR: fork with `gh`, push the source diff, open the PR, and fall back to a prefilled issue.
 - [ ] 12. Update replay: build a new overlay on update, drop merged changes, and replay or redo the rest with Claude.
 - [ ] 13. CLI: give the CLI its own overlay and the same Feedback flow.
 - [ ] 14. Docs, tests and release: update the README, add tests for the pure parts, and ship behind a beta label.
@@ -307,6 +307,18 @@ Opt-in button on a done change, plus "Send all as PRs".
 6. Add a version bump and `CHANGELOG.md` entry? No: leave that to the maintainer, since many PRs would clash on the version line.
 7. Push to the fork and `gh pr create` with title = first line of the request, body = full request, context, before screenshot, "Made with Pull Review's self-improve feature on <version>".
 8. Save the PR on the change. Refresh its state when the Feedback page opens.
+
+**Result (2026-11-04):**
+
+- `src/server/self-improve/pull-request.ts` (`createPullRequests`), text builders in `src/shared/self-improve-pr.ts` (branch `self-improve/<first 8 of id>`, title from the first line, body with request, Claude's summary, an optional note and the version; never the screenshot). The repository is `SELF_IMPROVE_REPO` (`isBatak/pull-review`).
+- Send: `gh auth status`, then `gh api user` for the login. Unless the login owns the repository, `gh repo fork --clone=false --remote=false`; the owner pushes straight to the repository. The work clone lives in `<cacheDir>/self-improve/repo` (a full clone, then `fetch --tags` each time). Git calls use `gh auth git-credential` as the credential helper, so pushing needs nothing beyond `gh auth login`.
+- Patches: `overlay.sourcePatch()` is `git show --relative=source --full-index --binary` per commit, so paths are `src/...`. Since `source/` is rebuilt byte-for-byte from the maps, its blob hashes match the files of the commit that was built (checked: the rebuilt `home-page.tsx` had the same hash as the repository's), and `git apply --3way` can merge onto newer code.
+- Bases, in order: `origin/main`. Then the branch of each earlier change of this version with an open PR, newest first, fetched from the fork, with the note "Depends on #N, which this change builds on." Then the tag `v<version>`, with "Made on version X. It did not apply to main as it is, so it may need a rebase." If none works: "Send the earlier changes it builds on first." GitHub can't base a PR on a fork branch, so a dependent PR targets `main` and also shows the earlier commit until that PR merges.
+- Then commit, `push --force` to the branch, and `gh pr create --base main --head <login>:<branch> --body-file`. Sending again after a reply pushes the new commits to the same branch, and the open PR updates.
+- Routes: `POST /changes/:id/pr` (a failure answers 409 with `code`: `gh-missing`, `gh-signed-out`, `no-source`, `does-not-apply` or `failed`), `GET /changes/:id/patch` (`{ patch, issueUrl }`), `POST /prs/refresh` (`gh pr view --json state` for open PRs, called once when the Feedback page opens).
+- UI: an open Done row has "Send as PR" (or "Update PR", with "Sending…" while it runs), a `#N open|merged|closed` chip that opens GitHub, and on `gh-missing`, `gh-signed-out` or `does-not-apply` the buttons "Copy patch" and "Open an issue" (a prefilled GitHub issue with the patch, cut at 5,000 characters).
+- Version bump and changelog are left to the maintainer, as planned.
+- Tests (`pull-request.test.ts`) use local bare repositories for upstream and fork and a fake `gh` that logs its calls and the PR body: fork, push and PR on `main`; the owner pushes without a fork; the tag fallback with its note; "Depends on #7" for a change on top of an earlier PR; no `gh` with the patch and issue link still working; PR state refresh. Checked in a headless browser with a signed-out fake `gh`: the error and both fallbacks show. **No real fork, push or PR was made.** The first real send should be watched.
 
 ### Step 12. Update replay
 

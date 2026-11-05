@@ -11,7 +11,7 @@ import { stepsFromTools } from '../../shared/thinking-steps'
 import { contextDetails, DONE_STATUSES, NEEDS_YOU_STATUSES, OPEN_STATUSES, requestTime, workingFor } from '../../shared/self-improve'
 import { ThinkingTimeline } from '../components/thinking-timeline'
 import { Button, WithTooltip } from '../components/ui/button'
-import { ActionError, ChangeDiff, Replies, ReplyBox } from '../feedback/change-actions'
+import { ActionError, ChangeDiff, PrChip, Replies, ReplyBox, SendPr } from '../feedback/change-actions'
 import { buildFeedbackContext } from '../feedback/context'
 import { SelfImproveButtons } from '../feedback/self-improve'
 import { api } from '../lib/api'
@@ -215,6 +215,7 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
               </span>
             )
           : <span className={css({ flexShrink: 0, fontSize: 'xs', color: 'fg.subtle' })}>{undone ? 'Undone' : 'Done'}</span>}
+        {change.pr && <PrChip pr={change.pr} />}
         <span className={css({ flexShrink: 0, minW: '14', textAlign: 'right', whiteSpace: 'nowrap', fontSize: 'xs', color: 'fg.subtle' })}>{requestTime(change.finishedAt ?? change.createdAt)}</span>
       </button>
       {open && (
@@ -228,10 +229,11 @@ function DoneRow({ change, act }: { change: LocalChange, act: RunAction }) {
           )}
           <Replies change={change} />
           {!undone && (
-            <div className={css({ display: 'flex', alignItems: 'center', gap: '2' })}>
+            <div className={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2' })}>
               <ReplyBox placeholder="Ask for a follow-up change…" onSend={text => act(() => api.replyToChange(change.id, text))} />
               <Button variant="ghost" size="md" onClick={() => setShowDiff(value => !value)}>{showDiff ? 'Hide diff' : 'View diff'}</Button>
               <Button variant="ghost" size="md" onClick={() => void act(() => api.undoChange(change.id)).then(setError)}>Undo</Button>
+              <SendPr change={change} />
             </div>
           )}
           <ActionError message={error} />
@@ -330,7 +332,8 @@ export function FeedbackPage() {
 
   useEffect(() => {
     document.title = 'Feedback'
-  }, [])
+    void api.refreshPrs().then(() => refresh(), () => null)
+  }, [refresh])
 
   const act: RunAction = async (action) => {
     try {

@@ -1,6 +1,7 @@
 import type { Env, Hono } from 'hono'
 import type { FeedbackContext } from '../../shared/self-improve'
 import type { SelfImproveService } from './service'
+import { PullRequestError } from './pull-request'
 import { SelfImproveError } from './service'
 
 export function registerSelfImproveRoutes<E extends Env>(api: Hono<E>, service: SelfImproveService | undefined) {
@@ -23,6 +24,24 @@ export function registerSelfImproveRoutes<E extends Env>(api: Hono<E>, service: 
   api.post('/self-improve/changes/:id/retry', async c => c.json(await selfImprove().retry(c.req.param('id'))))
   api.post('/self-improve/changes/:id/undo', async c => c.json(await selfImprove().undo(c.req.param('id'))))
   api.get('/self-improve/changes/:id/diff', async c => c.json(await selfImprove().diff(c.req.param('id'))))
+
+  api.get('/self-improve/changes/:id/patch', async c => c.json(await selfImprove().patch(c.req.param('id'))))
+
+  api.post('/self-improve/changes/:id/pr', async (c) => {
+    try {
+      return c.json(await selfImprove().sendPr(c.req.param('id')))
+    }
+    catch (error) {
+      if (error instanceof PullRequestError)
+        return c.json({ error: error.message, code: error.problem }, 409)
+      throw error
+    }
+  })
+
+  api.post('/self-improve/prs/refresh', async (c) => {
+    await selfImprove().refreshPrs()
+    return c.json({ ok: true })
+  })
 
   api.post('/self-improve/changes/:id/reply', async (c) => {
     const { text } = await c.req.json<{ text: unknown }>()

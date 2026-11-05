@@ -35,6 +35,7 @@ const change: LocalChange = {
   needsReload: false,
   replies: [],
   followUp: null,
+  pr: null,
 }
 
 describe('the change prompt', () => {

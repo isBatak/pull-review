@@ -111,6 +111,13 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     return tools.gitOk(['show', '--format=', '--no-color', '--no-ext-diff', sha, '--', 'source', 'build'], dir)
   }
 
+  async function sourcePatch(sha: string) {
+    const result = await tools.git(['show', '--format=', '--no-color', '--no-ext-diff', '--binary', '--full-index', '--relative=source', sha], dir)
+    if (result.code !== 0)
+      throw new GitError(result.stderr.trim() || `Could not read commit ${sha}.`)
+    return result.stdout
+  }
+
   async function discard() {
     await tools.gitOk(['reset', '--quiet', '--hard', 'HEAD'], dir)
     await tools.gitOk(['clean', '-fdq'], dir)
@@ -121,5 +128,5 @@ export function createOverlayStore(host: LocalHost, tools: GitTools, config: Ove
     await tools.gitOk(['clean', '-fdq'], dir)
   }
 
-  return { dir, ensure, isActive, setActive, changedFiles, commit, commitDiff, revert, discard, reset }
+  return { dir, ensure, isActive, setActive, changedFiles, commit, commitDiff, sourcePatch, revert, discard, reset }
 }

@@ -4,8 +4,11 @@ import type { LocalHost } from '../local/host'
 import type { OverlayConfig } from './overlay'
 import { BOOT_FAILURE_FILE, NEEDS_YOU_STATUSES, NEW_CHANGE_FIELDS, OPEN_STATUSES, pngBytes, reloadKind } from '../../shared/self-improve'
 import { splitPatchByFile } from '../local/changes'
+import { issueUrl, SELF_IMPROVE_REPO } from '../../shared/self-improve-pr'
 import { findClaude } from '../local/claude'
+import { findExecutable } from '../local/host'
 import { createOverlayStore } from './overlay'
+import { createPullRequests } from './pull-request'
 import { createChangeRunner } from './runner'
 
 export const MAX_REQUEST_LENGTH = 4000
@@ -25,12 +28,15 @@ export interface NewChange {
 const DISMISSABLE = new Set([...OPEN_STATUSES, ...NEEDS_YOU_STATUSES])
 const REPLYABLE = new Set<ChangeStatus>([...NEEDS_YOU_STATUSES, 'ready', 'applied'])
 const UNDOABLE = new Set<ChangeStatus>(['ready', 'applied', 'broke-app'])
+const SENDABLE = new Set<ChangeStatus>(['ready', 'applied'])
 
 export interface SelfImproveOptions {
   claudePath?: Promise<string | null>
   probeBackend?: (overlayDir: string) => Promise<string | null>
   running?: () => RunningBuild
   timeoutMs?: number
+  gh?: Promise<string | null>
+  remoteUrl?: (repo: string) => string
 }
 
 export type SelfImproveService = ReturnType<typeof createSelfImproveService>
@@ -218,6 +224,40 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     return files
   }
 
+  async function sendPr(id: string) {
+    const changes = await readChanges()
+    const change = findChange(changes, id)
+    if (!SENDABLE.has(change.status) || !change.commits.length)
+      throw new SelfImproveError('Only finished changes can be sent as a pull request.', 409)
+    const earlier = changes.slice(0, changes.indexOf(change)).filter(item => item.version === config.version && SENDABLE.has(item.status))
+    const pr = await pullRequests.send(change, earlier)
+    return updateChanges((all) => {
+      const current = findChange(all, id)
+      current.pr = pr
+      return current
+    })
+  }
+
+  async function patch(id: string) {
+    const change = findChange(await readChanges(), id)
+    const text = await pullRequests.patch(change)
+    return { patch: text, issueUrl: issueUrl(change, text) }
+  }
+
+  async function refreshPrs() {
+    const open = (await readChanges()).filter(change => change.pr?.state === 'open')
+    const states = new Map<string, NonNullable<LocalChange['pr']>['state']>()
+    for (const change of open)
+      states.set(change.id, await pullRequests.state(change.pr!).catch(() => change.pr!.state))
+    return updateChanges((changes) => {
+      for (const change of changes) {
+        const next = states.get(change.id)
+        if (change.pr && next)
+          change.pr.state = next
+      }
+    })
+  }
+
   function markApplied() {
     return updateChanges((changes) => {
       for (const change of changes) {
@@ -248,6 +288,16 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
       await host.remove(bootFailureFile)
   }
 
+  const pullRequests = createPullRequests({
+    host,
+    tools,
+    overlay,
+    repo: SELF_IMPROVE_REPO,
+    workDir: `${host.cacheDir}/self-improve`,
+    gh: options.gh ?? findExecutable(host, 'gh'),
+    remoteUrl: options.remoteUrl,
+  })
+
   const runner = createChangeRunner({
     host,
     overlay,
@@ -273,6 +323,9 @@ export function createSelfImproveService(host: LocalHost, tools: GitTools, confi
     retry,
     undo,
     diff,
+    sendPr,
+    patch,
+    refreshPrs,
     markApplied,
     markBroken,
     setActive,

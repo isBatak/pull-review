@@ -1,12 +1,14 @@
 import type { ChangeDiffFile, LocalChange } from '../../shared/self-improve'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp } from 'lucide-react'
+import { ArrowUp, GitPullRequest } from 'lucide-react'
 import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { requestTime } from '../../shared/self-improve'
 import { PatchFileCard } from '../components/patch-file-card'
 import { Button, WithTooltip } from '../components/ui/button'
-import { api } from '../lib/api'
+import { api, ApiError } from '../lib/api'
+import { copyText, openExternal } from '../lib/platform'
+import { useRefreshSelfImprove } from '../lib/self-improve'
 
 export type RunAction = (action: () => Promise<unknown>) => Promise<string | null>
 
@@ -115,5 +117,77 @@ export function ChangeDiff({ change }: { change: LocalChange }) {
       )}
       {showBuild && build.map(file => <DiffFile key={`${file.commit}:${file.path}`} file={file} />)}
     </div>
+  )
+}
+
+const FALLBACK_PROBLEMS = new Set(['gh-missing', 'gh-signed-out', 'does-not-apply'])
+const PR_STATE_COLORS = { open: 'success.fg', merged: 'accent.fg', closed: 'fg.subtle' } as const
+
+export function PrChip({ pr }: { pr: NonNullable<LocalChange['pr']> }) {
+  return (
+    <a
+      href={pr.url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={event => event.stopPropagation()}
+      className={css({ display: 'inline-flex', alignItems: 'center', gap: '1', flexShrink: 0, h: '6', px: '2', borderWidth: '1px', borderColor: 'border.default', borderRadius: 'full', fontSize: 'xs', color: 'fg.muted', _hover: { bg: 'bg.muted' }, '& svg': { w: '3.5', h: '3.5' } })}
+    >
+      <GitPullRequest className={css({ color: PR_STATE_COLORS[pr.state] })} />
+      {`#${pr.number} ${pr.state}`}
+    </a>
+  )
+}
+
+export function SendPr({ change }: { change: LocalChange }) {
+  const refresh = useRefreshSelfImprove()
+  const [sending, setSending] = useState(false)
+  const [problem, setProblem] = useState<{ message: string, fallback: boolean } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function send() {
+    setSending(true)
+    setProblem(null)
+    try {
+      await api.sendChangePr(change.id)
+      await refresh()
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setProblem({ message, fallback: error instanceof ApiError && FALLBACK_PROBLEMS.has(error.code ?? '') })
+    }
+    finally {
+      setSending(false)
+    }
+  }
+
+  async function copyPatch() {
+    const { patch } = await api.changePatch(change.id)
+    await copyText(patch)
+    setCopied(true)
+  }
+
+  async function openIssue() {
+    const { issueUrl } = await api.changePatch(change.id)
+    openExternal(issueUrl)
+  }
+
+  const open = change.pr?.state === 'open'
+  return (
+    <>
+      <Button variant="ghost" size="md" disabled={sending} onClick={() => void send()}>
+        {sending ? 'Sending…' : open ? 'Update PR' : 'Send as PR'}
+      </Button>
+      {problem && (
+        <div className={css({ flexBasis: 'full', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2' })}>
+          <ActionError message={problem.message} />
+          {problem.fallback && (
+            <>
+              <Button size="sm" onClick={() => void copyPatch()}>{copied ? 'Copied' : 'Copy patch'}</Button>
+              <Button size="sm" onClick={() => void openIssue()}>Open an issue</Button>
+            </>
+          )}
+        </div>
+      )}
+    </>
   )
 }

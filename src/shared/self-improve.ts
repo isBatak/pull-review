@@ -186,6 +186,14 @@ export interface LocalChange {
   needsReload: boolean
   replies: ChangeReply[]
   followUp: string | null
+  pr: ChangePr | null
+}
+
+export interface ChangePr {
+  number: number
+  url: string
+  branch: string
+  state: 'open' | 'merged' | 'closed'
 }
 
 export interface ChangeReply {
@@ -200,11 +208,12 @@ export interface ChangeDiffFile {
   diff: string | null
 }
 
-export const NEW_CHANGE_FIELDS: Pick<LocalChange, 'touchesBackend' | 'needsReload' | 'replies' | 'followUp'> = {
+export const NEW_CHANGE_FIELDS: Pick<LocalChange, 'touchesBackend' | 'needsReload' | 'replies' | 'followUp' | 'pr'> = {
   touchesBackend: false,
   needsReload: false,
   replies: [],
   followUp: null,
+  pr: null,
 }
 
 export interface ChangeRun {
