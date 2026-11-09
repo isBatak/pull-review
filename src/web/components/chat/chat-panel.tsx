@@ -547,7 +547,8 @@ export function ChatPanel({ mrRef, baseUrl }: ChatPanelProps) {
   const busy = state.running || state.messages.some(message => message.status === 'streaming')
 
   return (
-    <aside aria-label="Claude" className={css({ display: 'flex', flexDir: 'column', h: 'full', minH: '0', bg: 'bg.surface' })}>
+    // Its own compositing layer, because WebKit otherwise keeps painting a stale tab here after the diff jumps far.
+    <aside aria-label="Claude" className={css({ display: 'flex', flexDir: 'column', h: 'full', minH: '0', bg: 'bg.surface', transform: 'translateZ(0)' })}>
       <div className={cx(folderBar, css({ flexShrink: 0, gap: '2', h: '10', pl: '2', pr: '1.5', bg: 'bg.canvas' }))}>
         <FolderTabs
           label="Claude"

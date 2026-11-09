@@ -3,13 +3,13 @@
   "title": "Pull Review",
   "size": "1440x900",
   "id": "dev.pull-review.app",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "icon": "build/icon.png",
   "backend": "out/app-backend/main.js",
   "frontend": {
     "build": "pnpm run build:app",
     "dist": "out/app-web",
-    "dev": "pnpm exec vite --port 5173 --strictPort",
+    "dev": "pnpm exec vite --host 127.0.0.1 --port 5173 --strictPort",
     "devUrl": "http://127.0.0.1:5173"
   },
   "update": {

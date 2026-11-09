@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.20 (2026-11-06)
+
+- Fixed: after you jumped to a Claude finding, the code could jump away on its own a few seconds later, so you lost the draft you were reading.
+- Fixed: in the desktop app, the Claude panel could show the Chat tab while Review was still open.
+
 ## 0.2.19 (2026-11-05)
 
 - Fixed: a file's header covered the review toolbar while pinned to the top of the code.

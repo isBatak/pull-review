@@ -29,18 +29,18 @@ export function useClaudeReviewControls() {
 
 export function useClaudeReview(ref: MrRef, headSha: string, enabled: boolean): Omit<ClaudeReviewControls, 'jumpTo'> {
   const [state, setState] = useState<ReviewRunState>(EMPTY_REVIEW_STATE)
-  const versionRef = useRef(0)
+  const versionRef = useRef<number | null>(null)
   const key = mrKey(ref)
 
   const apply = useCallback((next: ReviewRunState) => {
-    if (next.version < versionRef.current)
+    if (versionRef.current !== null && next.version <= versionRef.current)
       return
     versionRef.current = next.version
     setState(next)
   }, [])
 
   useEffect(() => {
-    versionRef.current = 0
+    versionRef.current = null
     setState(EMPTY_REVIEW_STATE)
   }, [key])
 
@@ -52,7 +52,7 @@ export function useClaudeReview(ref: MrRef, headSha: string, enabled: boolean): 
       while (!cancelled) {
         try {
           const since = versionRef.current
-          const next = await api.reviewState(ref, since, since === 0 ? 0 : POLL_WAIT_MS)
+          const next = await api.reviewState(ref, since ?? 0, since === null ? 0 : POLL_WAIT_MS)
           if (!cancelled)
             apply(next)
         }
