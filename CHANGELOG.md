@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.21 (2026-11-09)
+
+- Changed: Claude's review findings now use plain, simple language, written like a senior frontend developer talking to a teammate.
+
 ## 0.2.20 (2026-11-06)
 
 - Fixed: after you jumped to a Claude finding, the code could jump away on its own a few seconds later, so you lost the draft you were reading.
