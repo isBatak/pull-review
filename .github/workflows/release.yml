@@ -41,12 +41,36 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install tinyjs
+      - name: Read pinned tinyjs
+        id: tinyjs
         if: steps.version.outputs.skip != 'true'
         run: |
-          tinyjs_version=$(node -p "require('./package.json').pinned.tinyjs")
-          curl -fsSL https://tinyjs.app/install | TINYJS_VERSION="v$tinyjs_version" TINYJS_NO_MODIFY_PATH=1 sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "version=$(node -p "require('./package.json').pinned.tinyjs")" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(node -p "require('./package.json').pinned.tinyjsMacosArm64Sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache tinyjs download
+        if: steps.version.outputs.skip != 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/tinyjs-download
+          key: tinyjs-macos-arm64-${{ steps.tinyjs.outputs.version }}-${{ steps.tinyjs.outputs.sha256 }}
+
+      - name: Install tinyjs
+        if: steps.version.outputs.skip != 'true'
+        env:
+          TINYJS_VERSION: ${{ steps.tinyjs.outputs.version }}
+          TINYJS_SHA256: ${{ steps.tinyjs.outputs.sha256 }}
+        run: |
+          archive="$HOME/tinyjs-download/tinyjs-macos-arm64.tar.gz"
+          if [ ! -f "$archive" ]; then
+            mkdir -p "$(dirname "$archive")"
+            curl -fsSL --retry 5 --retry-all-errors -o "$archive" \
+              "https://github.com/tarwin/tinyjsapp/releases/download/v$TINYJS_VERSION/tinyjs-macos-arm64.tar.gz"
+          fi
+          echo "$TINYJS_SHA256  $archive" | shasum -a 256 -c -
+          mkdir -p "$HOME/.tinyjs"
+          tar -xzf "$archive" -C "$HOME/.tinyjs" --strip-components 1
+          echo "$HOME/.tinyjs" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         if: steps.version.outputs.skip != 'true'

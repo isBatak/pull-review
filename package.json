@@ -68,6 +68,7 @@
     "zod": "^4.6.7"
   },
   "pinned": {
-    "tinyjs": "0.50.1"
+    "tinyjs": "0.50.1",
+    "tinyjsMacosArm64Sha256": "6cb145798eee17d75ac4be947653d6e7a47ce98eb6b6516866a83e0994201042"
   }
 }
